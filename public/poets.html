@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>شاعران بزرگ ایران | ادبیار</title>
+<style>
+:root{--gold:#c9973a;--paper:#f6ecd6;--glass:rgba(24,16,8,.62)}*{box-sizing:border-box}html,body{margin:0}
+body{font-family:Vazirmatn,Tahoma,sans-serif;background:#120d07;color:var(--paper);line-height:1.9}a{color:var(--paper);text-decoration:none;font-weight:700}
+.top{position:fixed;inset:0 0 auto;z-index:20;display:flex;gap:16px;padding:12px 22px;background:linear-gradient(#120d07cc,transparent)}
+.bar{position:fixed;top:0;inset-inline:0;height:3px;z-index:30;background:var(--gold);transform-origin:right;transform:scaleX(var(--p,0))}
+.dots{position:fixed;inset-inline-start:10px;top:50%;transform:translateY(-50%);z-index:20;display:flex;flex-direction:column;gap:7px}
+.dots button{width:12px;height:12px;border-radius:50%;border:1px solid var(--gold);background:transparent;padding:0;cursor:pointer}.dots button.on{background:var(--gold)}
+.stage{position:fixed;inset:0;perspective:900px;overflow:hidden}
+.bg{position:absolute;inset:-6%;background:url(assets/hero-library.jpg) center/cover;filter:brightness(.38) saturate(1.1)}
+.world{position:absolute;inset:0;transform-style:preserve-3d}
+.st{position:absolute;inset:0;display:grid;place-items:center;transform-style:preserve-3d;pointer-events:none}
+.box{width:min(1100px,94vw);text-align:center}
+.box h2{margin:0 0 4px;font-size:clamp(1.6rem,4vw,2.8rem);color:var(--gold)}.box>p{margin:0 0 14px;color:#e7d3a3}
+.row{display:flex;gap:18px;overflow-x:auto;padding:26px 20px 30px;justify-content:safe center;perspective:1000px;scrollbar-width:thin}
+.pc{flex:0 0 200px;padding:14px 12px;border-radius:20px;background:var(--glass);backdrop-filter:blur(8px);border:1px solid #c9973a66;cursor:pointer;color:inherit;font:inherit;transition:transform .4s,box-shadow .4s;transform:rotateY(calc(var(--r,0) * 7deg)) translateZ(0)}
+.pc:hover,.pc:focus-visible{transform:rotateY(0) translateZ(50px) scale(1.04);box-shadow:0 26px 50px #000c;outline:0}
+.av{width:112px;height:112px;margin:0 auto 8px;border-radius:50%;object-fit:cover;display:grid;place-items:center;font-size:2.6rem;font-weight:800;color:#241a10;background:linear-gradient(135deg,#e6c06e,#a8741f);border:3px solid #f6ecd699}
+.pc b{display:block;color:var(--gold)}.pc small{display:block;color:#e7d3a3}
+.hero h1{font-size:clamp(2.2rem,7vw,4.4rem);margin:0;color:var(--gold)}
+.hint{position:fixed;bottom:16px;inset-inline:0;text-align:center;z-index:15;color:#e7d3a3;font-size:.9rem}
+.modal{position:fixed;inset:0;z-index:50;background:#000c;display:none;place-items:center;padding:16px;perspective:1100px}.modal.on{display:grid}
+.sheet{width:min(820px,100%);max-height:92vh;overflow:auto;background:#241a10;border:1px solid var(--gold);border-radius:24px;padding:26px;animation:pop .5s cubic-bezier(.2,.8,.2,1)}
+@keyframes pop{from{opacity:0;transform:rotateX(35deg) translateZ(-200px)}}
+.sheet .head{display:flex;gap:18px;align-items:center}.sheet .av{width:130px;height:130px;margin:0;flex:none}
+.sheet h2{margin:0;color:var(--gold)}.sheet h3{color:var(--gold);margin-bottom:0}.sheet .poem{white-space:pre-wrap;border-inline-start:3px solid var(--gold);padding:4px 14px;margin:6px 0 14px;background:#ffffff0d;border-radius:8px}
+.sheet button{font:inherit;background:var(--gold);border:0;border-radius:99px;padding:4px 18px;font-weight:700;cursor:pointer;margin-top:10px}
+.flat .stage{position:static;overflow:visible;perspective:none}.flat .world{position:static;transform:none!important}.flat .st{position:static;padding:70px 0 0;transform:none!important;opacity:1!important;pointer-events:auto}.flat .bg,.flat .hint,.flat .bar,.flat .dots{display:none}.flat #track{display:none}
+@media(max-width:760px){.pc{flex-basis:160px}.sheet .head{flex-direction:column;text-align:center}}
+</style></head><body>
+<div class="bar"></div><div class="top"><a href="/">← ادبیار</a><a href="/architecture">معماری ایران باستان</a><span id="adm"></span></div>
+<div class="dots" id="dots"></div><div id="track"></div>
+<div class="stage" id="stage"><div class="bg" id="bg"></div><div class="world" id="world"></div></div>
+<div class="hint" id="hint">↓ اسکرول کنید تا از قرنی به قرن دیگر بروید</div>
+<div class="modal" id="modal"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<script src="poets.js"></script></body></html>

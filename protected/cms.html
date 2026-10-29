@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>مدیریت محتوا | ادبیار</title>
+<style>
+:root{--gold:#c9973a;--paper:#f6ecd6}*{box-sizing:border-box}body{margin:0;font-family:Vazirmatn,Tahoma,sans-serif;background:#120d07;color:var(--paper);line-height:1.9;padding:16px 4vw 80px}
+a{color:var(--gold)}h1,h2,h3{color:var(--gold)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.tabs button{font:inherit;border:1px solid var(--gold);background:transparent;color:var(--paper);border-radius:99px;padding:4px 20px;cursor:pointer}.tabs button.on{background:var(--gold);color:#241a10;font-weight:700}
+.wrap{display:grid;grid-template-columns:1fr 1.2fr;gap:22px;align-items:start}.box{background:#2a1d0f;border:1px solid #c9973a55;border-radius:18px;padding:18px}
+label{display:block;margin:8px 0;font-weight:700}input,textarea{width:100%;font:inherit;padding:7px 10px;border-radius:10px;border:1px solid #c9973a88;background:#1a1209;color:var(--paper)}textarea{min-height:90px}
+button.b{font:inherit;border:0;border-radius:99px;padding:6px 18px;cursor:pointer;background:var(--gold);color:#241a10;font-weight:700}button.d{background:#a33;color:#fff}button.o{background:transparent;color:var(--paper);border:1px solid var(--gold)}
+.row{display:flex;gap:8px;align-items:center;border-bottom:1px solid #c9973a33;padding:8px 0}.row span{flex:1}.row img{width:42px;height:42px;border-radius:50%;object-fit:cover}
+.poem{border:1px dashed #c9973a66;border-radius:12px;padding:8px;margin:8px 0}.msg{color:#9fe0a0;margin-top:8px}.err{color:#ff9a9a}.pv{max-width:180px;max-height:140px;border-radius:12px;display:none}
+.hide{display:none}small{color:#d9c392}@media(max-width:850px){.wrap{grid-template-columns:1fr}}
+</style></head><body>
+<p><a href="/">ادبیار</a> · <a href="/poets">شاعران</a> · <a href="/architecture">معماری</a></p>
+<h1>مدیریت محتوای سایت</h1><p id="gate">در حال بررسی دسترسی…</p>
+<div id="app" class="hide">
+  <div class="tabs" id="tabs"><button data-t="poets" class="on">شاعران</button><button data-t="arch">معماری ایران باستان</button><button data-t="verses">بیت‌های گزیده</button><button data-t="site">متن‌های صفحه‌ی اصلی</button></div>
+  <section id="t-poets"></section><section id="t-arch" class="hide"></section><section id="t-verses" class="hide"></section><section id="t-site" class="hide"></section>
+</div>
+<script src="cms-admin.js"></script></body></html>

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>بیت‌های گزیده | ادبیار</title>
+<style>
+:root{--gold:#c9973a;--paper:#f6ecd6}*{box-sizing:border-box}html,body{margin:0}
+body{font-family:Vazirmatn,Tahoma,sans-serif;background:#120d07;color:var(--paper);line-height:2}a{color:var(--paper);text-decoration:none;font-weight:700}
+.top{position:fixed;inset:0 0 auto;z-index:20;display:flex;gap:16px;padding:12px 22px;background:linear-gradient(#120d07aa,transparent)}
+.bar{position:fixed;top:0;inset-inline:0;height:3px;z-index:30;background:var(--gold);transform-origin:right;transform:scaleX(var(--p,0))}
+.stage{position:fixed;inset:0;perspective:900px;overflow:hidden}
+.bgs{position:absolute;inset:0}.bg{position:absolute;inset:-6%;background-size:cover;background-position:center;opacity:0;will-change:opacity,transform}
+.shade{position:absolute;inset:0;background:radial-gradient(ellipse at center,#0004,#000a)}
+.world{position:absolute;inset:0;transform-style:preserve-3d}
+.st{position:absolute;inset:0;display:grid;place-items:center;transform-style:preserve-3d;pointer-events:none}
+.v{width:min(900px,90vw);text-align:center;padding:34px 28px;border-radius:28px;background:rgba(14,9,4,.5);backdrop-filter:blur(6px);border:1px solid #c9973a55;box-shadow:0 30px 90px #000a}
+.v .l{font-size:clamp(1.3rem,3.6vw,2.4rem);line-height:2.1;text-shadow:0 2px 14px #000}.v .by{margin-top:14px;color:#e6c06e;font-weight:700;font-size:1.1rem}.v .src{color:#e7d3a3;font-size:.9rem}
+.v.intro h1{margin:0;font-size:clamp(2rem,6vw,3.8rem);color:#e6c06e}
+.mus{position:fixed;bottom:16px;inset-inline-start:16px;z-index:25;display:none;align-items:center;gap:8px;padding:6px 14px;border-radius:99px;border:1px solid var(--gold);background:#120d07cc;color:var(--paper);font:inherit;cursor:pointer}.mus.on{display:flex}.mus input{width:80px;accent-color:var(--gold)}
+.hint{position:fixed;bottom:16px;inset-inline:0;text-align:center;z-index:15;color:#e7d3a3;font-size:.9rem}
+.flat .stage{position:static;overflow:visible;perspective:none}.flat .world{position:static;transform:none!important}.flat .st{position:static;padding:30px 0;transform:none!important;opacity:1!important}.flat .bgs,.flat .shade,.flat .hint,.flat .bar{display:none}.flat body,body.flat{background:#241a10}
+</style></head><body>
+<div class="bar"></div><div class="top"><a href="/">← ادبیار</a><a href="/poets">شاعران بزرگ</a><span id="adm"></span></div>
+<div id="track"></div>
+<div class="stage"><div class="bgs" id="bgs"></div><div class="shade"></div><div class="world" id="world"></div></div>
+<div class="hint" id="hint"> </div>
+<div class="mus" id="mus"><button id="mb" style="all:unset;cursor:pointer">🎵 پخش آهنگ</button><input id="mv" type="range" min="0" max="1" step=".05" value=".6" aria-label="بلندی صدا"></div>
+<audio id="au" loop preload="none"></audio>
+<script src="verses.js"></script></body></html>

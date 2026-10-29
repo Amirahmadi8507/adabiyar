@@ -1,0 +1,10 @@
+const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');const root=path.join(__dirname,'..');const pkg=require(path.join(root,'package.json'));const server=fs.readFileSync(path.join(root,'server.js'),'utf8');const panel=fs.readFileSync(path.join(root,'public','panel.js'),'utf8');const index=fs.readFileSync(path.join(root,'public','index.html'),'utf8');
+test('uses sql.js instead of native sqlite dependencies',()=>{assert.ok(pkg.dependencies['sql.js']);assert.ok(!pkg.dependencies['better-sqlite3']);assert.ok(!pkg.dependencies['connect-sqlite3']);});
+test('teacher and admin dashboards are present',()=>{assert.ok(fs.existsSync(path.join(root,'public','panel.html')));assert.match(server,/app\.get\('\/teacher'/);assert.match(server,/app\.get\('\/admin'/);assert.match(panel,/ساخت آزمون/);});
+test('objective exam publish requires at least five questions',()=>{assert.match(server,/n\s*<\s*5/);assert.match(server,/type!='mcq'/);});
+test('lesson and poem admin endpoints exist',()=>{assert.match(server,/api\/admin\/lessons\/:id/);assert.match(server,/api\/admin\/poems/);assert.match(server,/CREATE TABLE IF NOT EXISTS poems/);});
+test('poem library and owner footer are present',()=>{assert.match(index,/id="poems"/);assert.match(index,/امیرحسین احمدی/);assert.match(fs.readFileSync(path.join(root,'public','app.js'),'utf8'),/loadPoems/);});
+
+test('Ollama local AI provider is supported without an API key',()=>{assert.match(server,/provider\s*===\s*'ollama'/);assert.match(server,/OLLAMA_BASE_URL/);assert.match(server,/OLLAMA_MODEL/);assert.match(server,/data\.message\?\.content/);});
+
+test('OpenAI API provider is supported server-side and configured through environment variables',()=>{assert.match(server,/provider\s*===\s*'openai'/);assert.match(server,/OPENAI_API_KEY/);assert.match(server,/OPENAI_MODEL/);assert.match(server,/https:\/\/api\.openai\.com\/v1\/chat\/completions/);assert.match(fs.readFileSync(path.join(root,'.env.example'),'utf8'),/OPENAI_API_KEY=/);});
