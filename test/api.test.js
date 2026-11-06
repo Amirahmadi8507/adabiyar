@@ -42,12 +42,18 @@ test('جریان کامل آزمون در منطقه زمانی تهران: شر
   assert.equal((await http('PATCH', `/api/admin/users/${t.id}/role`, { role: 'teacher' }, admin)).status, 200);
   const teacher = (await http('POST', '/api/auth/login', { email: 'teach@test.io', password: 'password-12345' })).cookie;
   assert.equal((await http('POST', '/api/exams', { title: 'x', grade: 'abc' }, teacher)).status, 400);
-  const exam = (await http('POST', '/api/exams', { title: 'آزمون تست', grade: 7, duration_minutes: 10 }, teacher)).data.exam;
+  assert.equal((await http('POST', '/api/exams', { title: 'بدون کلاس', grade: 7, duration_minutes: 10 }, teacher)).status, 400);   // آزمون معلم باید به یک کلاس وصل باشد
+  const cls = (await http('POST', '/api/classes', { name: 'هفتم الف', grade: 7 }, teacher)); assert.equal(cls.status, 201);
+  const classRow = (await http('GET', '/api/classes', null, teacher)).data.classes[0];
+  const exam = (await http('POST', '/api/exams', { title: 'آزمون تست', grade: 7, duration_minutes: 10, class_id: classRow.id }, teacher)).data.exam;
   assert.equal((await http('POST', `/api/exams/${exam.id}/publish`, {}, teacher)).status, 400);   // کمتر از ۵ سؤال
   const qids = []; for (let i = 1; i <= 5; i++) qids.push((await http('POST', `/api/exams/${exam.id}/questions`, question(i), teacher)).data.question.id);
   assert.equal((await http('POST', `/api/exams/${exam.id}/publish`, {}, teacher)).status, 200);
 
   const student = (await http('POST', '/api/auth/login', { email: 'ali@test.io', password: 'password-12345' })).cookie;
+  assert.equal((await http('GET', `/api/exams/${exam.id}`, null, student)).status, 404);   // هنوز عضو کلاس نیست
+  assert.equal((await http('POST', `/api/exams/${exam.id}/start`, {}, student)).status, 403);
+  assert.equal((await http('POST', '/api/classes/join', { code: classRow.code }, student)).status, 200);
   assert.equal((await http('GET', `/api/exams/${exam.id}`, null, student)).data.questions.length, 0);   // پیش از شروع سؤالی نمی‌بیند
   const start = await http('POST', `/api/exams/${exam.id}/start`, {}, student);
   assert.equal(start.status, 200); assert.ok(start.data.remaining_seconds > 500);

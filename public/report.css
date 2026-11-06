@@ -1,0 +1,12 @@
+/* کارنامه و نمودارها: مشترک بین داشبورد دانش‌آموز و پنل معلم */
+.rp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:10px 0}
+.rp-card{border:1px solid rgba(215,173,105,.3);border-radius:16px;padding:12px 16px;background:#ffffff08}.rp-card small{color:#b7b1a5;display:block}.rp-card b{font-size:1.7rem;color:#f2d7a3}
+.rp-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.rp-chart{border:1px solid rgba(215,173,105,.3);border-radius:16px;padding:10px 12px;background:#ffffff08}.rp-chart h4{margin:0 0 4px;color:#d7ad69}.rp-chart svg{width:100%;height:auto;display:block}
+.rp-topic{display:grid;grid-template-columns:minmax(120px,1.2fr) 3fr 56px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid rgba(215,173,105,.18)}
+.rp-bar{height:10px;border-radius:99px;background:#ffffff14;overflow:hidden}.rp-bar i{display:block;height:100%;border-radius:99px}
+.rp-good i{background:linear-gradient(90deg,#33b3a6,#7fe0a4)}.rp-mid i{background:linear-gradient(90deg,#d7ad69,#f2d7a3)}.rp-bad i{background:linear-gradient(90deg,#c0504d,#ff9a9a)}
+.rp-tag{font-size:12px;padding:1px 8px;border-radius:99px;border:1px solid}.rp-tag.good{color:#7fe0a4}.rp-tag.bad{color:#ff9a9a}
+.rp-note{color:#b7b1a5;font-size:.92rem}.rp-list{margin:.3em 0;padding-inline-start:1.2em}.rp-table{overflow-x:auto}.rp-table table{display:table;width:100%;border-collapse:collapse}.rp-table td,.rp-table th{padding:6px 10px;border-bottom:1px solid rgba(215,173,105,.2);text-align:right;white-space:nowrap}
+@media(max-width:520px){.rp-topic{grid-template-columns:1fr 56px}.rp-topic .rp-bar{grid-column:1/-1;order:3}}
+@media print{.no-print,header,.quick,form,button{display:none!important}body{background:#fff!important;color:#000!important}.rp-card,.rp-chart{border-color:#999;background:#fff}.rp-card b,.rp-chart h4{color:#000}}

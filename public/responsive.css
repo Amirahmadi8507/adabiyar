@@ -1,0 +1,20 @@
+/* لایه‌ی واکنش‌گرایی: روی همه‌ی صفحه‌ها بعد از استایل‌های اصلی بارگذاری می‌شود */
+html{-webkit-text-size-adjust:100%;overflow-x:clip}body{overflow-x:clip}
+img,video,canvas,svg{max-width:100%}
+.brand-logo{width:40px;height:40px;display:block;flex:none}
+table{display:block;max-width:100%;overflow-x:auto}
+input,select,textarea,button{max-width:100%}
+@media(max-width:820px){
+  .topbar{gap:8px}.nav a,.actions button,.login-btn,.icon-btn{min-height:44px}
+  input,select,textarea{font-size:16px!important}   /* جلوگیری از زوم خودکار iOS */
+  .hero{min-height:560px;height:auto}.hero-content{padding-inline:18px}
+  section,.section{padding-inline:min(5vw,22px)}
+  dialog,.modal-card,.dialog{width:calc(100vw - 20px)!important;max-width:none!important;max-height:92vh;overflow:auto}
+  .app-form,.form-grid,.panel-grid,.admin-grid{grid-template-columns:1fr!important}
+}
+@media(max-width:480px){
+  h1{font-size:clamp(1.7rem,9vw,2.4rem)!important}h2{font-size:clamp(1.3rem,6.5vw,1.8rem)!important}
+  .brand strong{font-size:20px}.brand small{display:none}
+  button,.btn,.tabs button{min-height:44px}
+}
+@media(hover:none){.tilt:hover{transform:none}}

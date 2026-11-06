@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تقویم آموزشی | ادبیار</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="responsive.css"><link rel="stylesheet" href="persian.css"><link rel="stylesheet" href="nav.css">
+<style>
+:root{--gold:#d7ad69;--gold2:#f2d7a3;--paper:#f6efdf;--muted:#b7b1a5;--line:rgba(215,173,105,.3)}*{box-sizing:border-box}
+body{margin:0;font-family:Vazirmatn,Tahoma,sans-serif;background:#0b0e0d;color:var(--paper);line-height:1.9}a{color:var(--gold);text-decoration:none;font-weight:700}
+main{max-width:1000px;margin:0 auto;padding:26px 4vw 80px}h1{margin:.2em 0;color:var(--gold2)}.msg{color:var(--muted)}.err{color:#ff9a9a}
+.top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0}.top h2{margin:0;flex:1;text-align:center;color:var(--gold2);font-family:'Aref Ruqaa','Vazirmatn',serif}
+button{font:inherit;min-height:42px;border:1px solid var(--gold);background:transparent;color:var(--paper);border-radius:99px;padding:2px 18px;cursor:pointer}button:hover{background:#d7ad6922}
+.wk,.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}.wk div{text-align:center;color:var(--gold);font-weight:700;font-size:.9rem}
+.cell{min-height:78px;border:1px solid var(--line);border-radius:12px;padding:6px 8px;background:#ffffff06;cursor:pointer;text-align:right;font:inherit;color:inherit;display:flex;flex-direction:column;gap:4px}.cell.blank{border:0;background:transparent;cursor:default}
+.cell:hover:not(.blank){border-color:var(--gold)}.cell.today{border-color:#33b3a6;background:#33b3a61a}.cell.sel{outline:2px solid var(--gold)}.cell b{font-size:.95rem}
+.dots{display:flex;flex-wrap:wrap;gap:3px}.dot{width:9px;height:9px;border-radius:50%}.dot.assignment{background:#d7ad69}.dot.exam{background:#d9615e}.dot.event{background:#33b3a6}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0;color:var(--muted);font-size:.9rem}.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-inline-end:5px}
+.card{background:#111513;border:1px solid var(--line);border-radius:16px;padding:12px 16px;margin:8px 0}.card h3{margin:0;font-size:1.02rem;color:var(--gold2)}.pill{padding:1px 10px;border-radius:99px;border:1px solid;font-size:12px}.good{color:#7fe0a4}.mid{color:var(--gold2)}.bad{color:#ff9a9a}
+@media(max-width:600px){.cell{min-height:56px;padding:4px}.cell b{font-size:.8rem}.dot{width:7px;height:7px}.wk div{font-size:.75rem}}
+</style></head><body>
+<div id="siteHeader"></div>
+<main id="app"><h1>تقویم آموزشی</h1><p class="msg">در حال بارگذاری…</p></main>
+<script src="site-header.js"></script><script src="calendar.js"></script></body></html>

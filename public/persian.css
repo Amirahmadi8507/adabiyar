@@ -1,0 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&display=swap');
+/* هویت بصری ایرانی: ایوان و طاق، کنگره‌ی تخت‌جمشید، خاتم و گره‌چینی، فیروزه‌ای و طلایی */
+:root{--firouzeh:#33b3a6;--lapis:#1f4e8c;--brick:#b8693a;--khatam:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cg fill='none' stroke='%23d7ad69' stroke-width='1'%3E%3Crect x='16' y='16' width='28' height='28'/%3E%3Crect x='16' y='16' width='28' height='28' transform='rotate(45 30 30)'/%3E%3Ccircle cx='30' cy='30' r='5'/%3E%3Cpath d='M0 30h16M44 30h16M30 0v16M30 44v16'/%3E%3C/g%3E%3C/svg%3E");--frieze:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='12' viewBox='0 0 28 12'%3E%3Cpath d='M0 12V8h4V4h4V0h12v4h4v4h4v4z' fill='%23d7ad69'/%3E%3C/svg%3E");--divider:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='28' viewBox='0 0 240 28'%3E%3Cg fill='none' stroke='%23d7ad69' stroke-width='1.2'%3E%3Cpath d='M6 14H94M146 14H234'/%3E%3Crect x='108' y='2' width='24' height='24'/%3E%3Crect x='108' y='2' width='24' height='24' transform='rotate(45 120 14)'/%3E%3Ccircle cx='120' cy='14' r='3.5' fill='%23d7ad69'/%3E%3Ccircle cx='4' cy='14' r='2.5'/%3E%3Ccircle cx='236' cy='14' r='2.5'/%3E%3C/g%3E%3C/svg%3E");--archsvg:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 320' preserveAspectRatio='xMidYMax meet'%3E%3Cg fill='none' stroke='%23d7ad69' stroke-opacity='.55' stroke-width='2.2'%3E%3Cpath d='M12 320V150C12 82 92 42 200 4C308 42 388 82 388 150V320'/%3E%3Cpath d='M34 320V152C34 94 104 58 200 26C296 58 366 94 366 152V320' stroke-opacity='.35'/%3E%3Cpath d='M200 4v14' /%3E%3C/g%3E%3Cg fill='%23d7ad69' fill-opacity='.5'%3E%3Ccircle cx='200' cy='38' r='3'/%3E%3C/g%3E%3C/svg%3E")}
+h1,h2,.brand strong,.hero-content h1,.footer-brand strong{font-family:'Aref Ruqaa','Vazirmatn',serif;font-weight:700}
+body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.06;background:var(--khatam) 0 0/60px 60px}
+::selection{background:#33b3a666}:focus-visible{outline:2px solid var(--firouzeh);outline-offset:3px}
+.topbar,.top{border-bottom:0}
+.topbar::after,.top::after{content:'';position:absolute;inset-inline:0;bottom:-11px;height:12px;pointer-events:none;background:var(--frieze) repeat-x 0 0/28px 12px;opacity:.7}
+.nav a:hover,.nav a.active{color:var(--firouzeh)}
+.kicker{color:var(--firouzeh)!important;font-weight:700}
+.hero::before{content:'';position:absolute;inset-inline:0;bottom:0;height:14px;z-index:1;pointer-events:none;background:var(--frieze) repeat-x 0 0/28px 12px;opacity:.85}
+.hero::after{content:'';position:absolute;inset:78px 0 0;z-index:-1;pointer-events:none;background:var(--archsvg) center bottom/auto 100% no-repeat;opacity:.9}
+.section-heading h2::after{content:'';display:block;height:28px;margin:6px auto 0;background:var(--divider) center/220px 28px no-repeat;opacity:.9}
+.orn-divider{display:flex;justify-content:center;padding:4px 0;pointer-events:none}.orn-divider i{display:block;width:240px;height:28px;background:var(--divider) center/contain no-repeat;opacity:.8}
+.feature-card,.exam-panel,.quote-paper,.card,.v,.tilt{outline:1px solid #d7ad6944;outline-offset:-9px}
+.gold-btn:hover{box-shadow:0 0 0 3px #33b3a655}
+footer{position:relative}footer::before{content:'';position:absolute;inset-inline:0;top:0;height:12px;pointer-events:none;background:var(--frieze) repeat-x 0 0/28px 12px;opacity:.6}
+/* درگاه ورود: دو لنگه‌ی در با نقش خاتم که باز می‌شود */
+.gate{position:fixed;inset:0;z-index:9999;pointer-events:none}
+.gate .d{position:absolute;top:0;bottom:0;width:50%;background:linear-gradient(#0b0e0dd9,#0b0e0dd9),var(--khatam) 0 0/60px,#0b0e0d;transition:transform 1s cubic-bezier(.7,0,.2,1) .75s;display:flex;align-items:center}
+.gate .l{left:0;border-right:2px solid var(--gold,#d7ad69);justify-content:flex-end}.gate .r{right:0;border-left:2px solid var(--gold,#d7ad69)}
+.gate.open .l{transform:translateX(-102%)}.gate.open .r{transform:translateX(102%)}
+.gate .mid{position:absolute;inset:0;display:grid;place-content:center;background:radial-gradient(circle at center,#0b0e0df2 0,#0b0e0dcc 130px,transparent 260px);text-align:center;color:#f2d7a3;transition:opacity .5s .45s;gap:6px}
+.gate .mid img{width:84px;height:84px;margin:auto}.gate .mid b{font:700 2rem 'Aref Ruqaa','Vazirmatn',serif}.gate .mid small{color:#b7b1a5}
+.gate.open .mid{opacity:0}
+@media(prefers-reduced-motion:reduce){.gate{display:none}}
+
+@media(min-width:821px) and (max-width:1400px){.nav a{white-space:nowrap;font-size:13px}.nav{gap:14px}}
+
+/* چالش روزانه */
+.daily-box{max-width:760px;margin:22px auto 0}.daily-card{border:1px solid #d7ad6955;border-radius:22px;padding:22px 24px;background:#ffffff08;position:relative}
+.daily-kind{display:inline-block;padding:2px 14px;border-radius:99px;border:1px solid var(--firouzeh);color:var(--firouzeh);font-size:13px;font-weight:700}
+.daily-card h3{margin:.4em 0 0;color:#f2d7a3}.daily-prompt{font-size:1.15rem;line-height:2.1;margin:.4em 0 1em}
+.daily-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.daily-opt{font:inherit;min-height:48px;border-radius:14px;border:1px solid #d7ad6988;background:transparent;color:inherit;cursor:pointer;padding:6px 14px;transition:transform .15s,background .15s}
+.daily-opt:hover:not(:disabled){background:#d7ad6922;transform:translateY(-2px)}.daily-opt:disabled{cursor:default;opacity:.8}.daily-opt.right{background:#33b3a633;border-color:#33b3a6;opacity:1}.daily-opt.wrong{background:#d9615e33;border-color:#d9615e;opacity:1}
+.daily-result{margin-top:14px;padding:10px 14px;border-radius:14px;border:1px solid}.daily-result.ok{border-color:#33b3a6}.daily-result.no{border-color:#d9615e}.daily-result p{margin:.2em 0}.daily-result a{color:#d7ad69}
+@media(min-width:821px){.nav{gap:10px}.nav a{font-size:12.5px}}

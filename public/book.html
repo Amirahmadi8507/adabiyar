@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>کتاب‌های درسی | ادبیار</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="responsive.css"><link rel="stylesheet" href="persian.css">
+<style>
+:root{--gold:#d7ad69;--paper:#f6efdf;--fs:1}*{box-sizing:border-box}body{margin:0;font-family:Vazirmatn,Tahoma,sans-serif;background:#0b0e0d;color:var(--paper);line-height:2;font-size:calc(1rem*var(--fs))}
+a{color:var(--gold);text-decoration:none;font-weight:700}header{display:flex;align-items:center;gap:12px;padding:12px 4vw;border-bottom:1px solid #d7ad6944;flex-wrap:wrap}header img{width:38px;height:38px}header .sp{flex:1}
+main{max-width:1000px;margin:0 auto;padding:18px 4vw 80px}h1{color:var(--gold);margin:.4em 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.row button,.tools button{font:inherit;min-height:42px;border:1px solid var(--gold);background:transparent;color:var(--paper);border-radius:99px;padding:2px 18px;cursor:pointer}
+.row button.on{background:var(--gold);color:#241a10;font-weight:700}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.tools input{flex:1 1 220px;min-height:42px;font:inherit;border-radius:99px;border:1px solid #d7ad6988;background:#111513;color:var(--paper);padding:2px 16px}
+.card{background:#111513;border:1px solid #d7ad6955;border-radius:18px;padding:14px 18px;margin:12px 0}.card h3{margin:0;color:var(--gold)}.card p{margin:.3em 0;white-space:pre-wrap}
+.card img{max-width:100%;max-height:420px;border-radius:12px;cursor:zoom-in;display:block;margin:8px 0}
+details summary{cursor:pointer;color:var(--gold);font-weight:700;min-height:36px}.ans{border-inline-start:3px solid var(--gold);padding:2px 12px;background:#ffffff0d;border-radius:8px}
+.vg{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}.vg .card{margin:0}
+.lb{position:fixed;inset:0;background:#000d;z-index:99;display:none;place-items:center;padding:12px}.lb.on{display:grid}.lb img{max-width:100%;max-height:100%;border-radius:10px}
+.vt{display:table!important;width:100%;border-collapse:collapse;margin-top:8px}.vt td{padding:8px 12px;border-bottom:1px solid #d7ad6933;vertical-align:top}.vt tr:nth-child(even) td{background:#ffffff08}.vt td:first-child{width:34%;color:var(--gold);font-weight:700}
+.ex h4{color:var(--gold);margin:.8em 0 .1em}.ex p{margin:.3em 0}.mg{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin:10px 0}.mg img,.mg video{width:100%;max-height:360px;object-fit:contain;background:#000;border-radius:12px;margin:0}
+.note{color:#b7b1a5}@media print{header,.row,.tools,.lb,video{display:none!important}body{background:#fff;color:#000}.card{border-color:#999;background:#fff;break-inside:avoid}.card h3{color:#000}}
+</style><link rel="stylesheet" href="nav.css"></head><body>
+<div id="siteHeader"></div>
+<main><h1>کتاب‌های درسی ادبیات</h1>
+<div class="row" id="grades"></div><div class="row" id="kinds"></div>
+<div class="tools"><input id="q" type="search" placeholder="جست‌وجو در این بخش…"><button id="fm" title="کوچک‌تر">A−</button><button id="fp" title="بزرگ‌تر">A+</button><button id="pr">چاپ</button></div>
+<div id="out"></div></main>
+<div class="lb" id="lb"><img alt=""></div>
+<script src="site-header.js"></script><script src="book.js"></script></body></html>

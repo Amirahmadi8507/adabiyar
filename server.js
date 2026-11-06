@@ -19,6 +19,9 @@ const dbFile = process.env.DB_FILE ? path.resolve(root, process.env.DB_FILE) : p
 fs.mkdirSync(path.dirname(dbFile), { recursive: true });
 const SQL = await initSqlJs();
 const existingDb = fs.existsSync(dbFile) ? new Uint8Array(fs.readFileSync(dbFile)) : undefined;
+// نمایش مسیر دقیق دیتابیس در ترمینال تا معلوم باشد تغییرات کجا ذخیره می‌شوند؛ و یک نسخه‌ی پشتیبان در هر اجرا
+console.log(`📁 دیتابیس: ${dbFile} — ${existingDb ? 'فایل قبلی پیدا شد و بارگذاری شد' : '⚠ فایلی نبود؛ دیتابیس تازه و خالی ساخته می‌شود'}`);
+if (existingDb) { try { fs.copyFileSync(dbFile, dbFile + '.bak'); } catch (e) { console.error('Backup failed:', e.message); } }
 const rawDb = new SQL.Database(existingDb);
 rawDb.run('PRAGMA foreign_keys = ON');
 let inTransaction = false;
@@ -102,6 +105,60 @@ CREATE TABLE IF NOT EXISTS site_content (key TEXT PRIMARY KEY, value TEXT NOT NU
 CREATE TABLE IF NOT EXISTS arch_sites (
  id INTEGER PRIMARY KEY AUTOINCREMENT, sort INTEGER NOT NULL DEFAULT 0, name TEXT NOT NULL, subtitle TEXT NOT NULL DEFAULT '',
  body TEXT NOT NULL DEFAULT '', facts TEXT NOT NULL DEFAULT '', photo TEXT NOT NULL DEFAULT '', art TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS book_items (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, grade INTEGER NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '',
+ answer TEXT NOT NULL DEFAULT '', image TEXT NOT NULL DEFAULT '', sort INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS classes (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER NOT NULL REFERENCES users(id), name TEXT NOT NULL, grade INTEGER NOT NULL,
+ code TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS class_members (
+ class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE, student_id INTEGER NOT NULL REFERENCES users(id),
+ joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (class_id, student_id)
+);
+CREATE TABLE IF NOT EXISTS assignments (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, class_id INTEGER NOT NULL REFERENCES classes(id), teacher_id INTEGER NOT NULL REFERENCES users(id), title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '',
+ due_at TEXT NOT NULL, max_score REAL NOT NULL DEFAULT 20, allow_late INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS assignment_submissions (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, assignment_id INTEGER NOT NULL REFERENCES assignments(id), student_id INTEGER NOT NULL REFERENCES users(id), body TEXT NOT NULL DEFAULT '', file_name TEXT NOT NULL DEFAULT '', file_mime TEXT NOT NULL DEFAULT '',
+ submitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, late INTEGER NOT NULL DEFAULT 0, score REAL, feedback TEXT NOT NULL DEFAULT '', graded_at TEXT, UNIQUE(assignment_id, student_id)
+);
+CREATE TABLE IF NOT EXISTS calendar_events (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, class_id INTEGER NOT NULL REFERENCES classes(id), teacher_id INTEGER NOT NULL REFERENCES users(id), kind TEXT NOT NULL DEFAULT 'class', title TEXT NOT NULL,
+ description TEXT NOT NULL DEFAULT '', start_at TEXT NOT NULL, end_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS mistake_notes (
+ user_id INTEGER NOT NULL REFERENCES users(id), question_id INTEGER NOT NULL REFERENCES questions(id), status TEXT NOT NULL DEFAULT 'open', reason TEXT NOT NULL DEFAULT '', explanation TEXT NOT NULL DEFAULT '',
+ streak INTEGER NOT NULL DEFAULT 0, practiced INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, question_id)
+);
+CREATE TABLE IF NOT EXISTS challenges (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL DEFAULT 'question', title TEXT NOT NULL, prompt TEXT NOT NULL, options TEXT NOT NULL DEFAULT '[]', answer TEXT NOT NULL,
+ explanation TEXT NOT NULL DEFAULT '', day TEXT, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS challenge_log (
+ user_id INTEGER NOT NULL REFERENCES users(id), day TEXT NOT NULL, challenge_id INTEGER NOT NULL, choice TEXT NOT NULL, correct INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, day)
+);
+CREATE TABLE IF NOT EXISTS forum_topics (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, class_id INTEGER, user_id INTEGER NOT NULL REFERENCES users(id), title TEXT NOT NULL, body TEXT NOT NULL, pinned INTEGER NOT NULL DEFAULT 0, locked INTEGER NOT NULL DEFAULT 0,
+ hidden INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, last_activity TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS forum_posts (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, topic_id INTEGER NOT NULL REFERENCES forum_topics(id), user_id INTEGER NOT NULL REFERENCES users(id), body TEXT NOT NULL, hidden INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS forum_reports (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, target_type TEXT NOT NULL, target_id INTEGER NOT NULL, user_id INTEGER NOT NULL REFERENCES users(id), reason TEXT NOT NULL DEFAULT '', resolved INTEGER NOT NULL DEFAULT 0,
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(target_type, target_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS league_awards (week_start TEXT NOT NULL, user_id INTEGER NOT NULL REFERENCES users(id), rank INTEGER NOT NULL, points INTEGER NOT NULL, PRIMARY KEY(week_start, user_id));
+CREATE TABLE IF NOT EXISTS league_weeks (week_start TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS class_materials (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, class_id INTEGER NOT NULL REFERENCES classes(id), kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', mime TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS book_media (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, item_id INTEGER NOT NULL, kind TEXT NOT NULL, mime TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS verses (
  id INTEGER PRIMARY KEY AUTOINCREMENT, sort INTEGER NOT NULL DEFAULT 0, text TEXT NOT NULL, poet TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '', bg TEXT NOT NULL DEFAULT ''
@@ -235,14 +292,14 @@ app.use('/api', (req, res, next) => {
 function aiStatus() {
   const p = (process.env.AI_PROVIDER || 'off').toLowerCase();
   if (p === 'ollama') return { provider: p, configured: true, local: true, model: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b' };
-  const key = { openai: process.env.OPENAI_API_KEY, gemini: geminiKey(), groq: process.env.GROQ_API_KEY, openrouter: process.env.OPENROUTER_API_KEY }[p];
+  const key = { openai: process.env.OPENAI_API_KEY, gemini: geminiKey(), groq: process.env.GROQ_API_KEY, openrouter: process.env.OPENROUTER_API_KEY, gapgpt: process.env.GAPGPT_API_KEY }[p];
   return { provider: p, configured: !!key && p !== 'off', local: false, model: currentModel() };
 }
 const GEMINI_DEFAULT_MODEL = 'gemini-3.8-flash';   // مدل 2.5 برای حساب‌های جدید محدود/حذف شده است
 const geminiModel = () => process.env.GEMINI_MODEL || GEMINI_DEFAULT_MODEL;
 const geminiKey = () => String(process.env.GEMINI_API_KEY || '').trim().replace(/^["']+|["']+$/g, '').trim();
 const geminiBase = () => (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
-const currentModel = () => ({ openai: process.env.OPENAI_MODEL || 'gpt-4.1-mini', gemini: geminiModel(), ollama: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b', groq: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile', openrouter: process.env.OPENROUTER_MODEL || 'openrouter/auto' })[(process.env.AI_PROVIDER || '').toLowerCase()] || '';
+const currentModel = () => ({ openai: process.env.OPENAI_MODEL || 'gpt-4.1-mini', gemini: geminiModel(), ollama: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b', groq: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile', openrouter: process.env.OPENROUTER_MODEL || 'openrouter/auto', gapgpt: process.env.GAPGPT_MODEL || 'claude-sonnet-5-5' })[(process.env.AI_PROVIDER || '').toLowerCase()] || '';
 const ollamaBase = () => (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').replace(/\/$/, '');
 async function aiProbe() {
   const s = aiStatus();
@@ -302,6 +359,9 @@ async function askAI(prompt, system, history = []) {
     url = 'https://openrouter.ai/api/v1/chat/completions'; headers.Authorization = `Bearer ${process.env.OPENROUTER_API_KEY}`;
     headers['HTTP-Referer'] = process.env.OPENROUTER_SITE_URL || 'http://localhost:3000'; headers['X-Title'] = process.env.OPENROUTER_APP_NAME || 'Adabiyar';
     body = { model: process.env.OPENROUTER_MODEL || 'openrouter/auto', messages: msgs, temperature: 0.4, max_tokens: 1200 };
+  } else if (provider === 'gapgpt' && process.env.GAPGPT_API_KEY) {   // سازگار با OpenAI؛ آدرس و مدل از .env
+    url = `${(process.env.GAPGPT_BASE_URL || 'https://api.gapgpt.app/v1').trim().replace(/\/$/, '')}/chat/completions`; headers.Authorization = `Bearer ${process.env.GAPGPT_API_KEY.trim()}`;
+    body = { model: process.env.GAPGPT_MODEL || 'claude-sonnet-5-5', messages: msgs, temperature: 0.4, max_tokens: 1200 };
   } else if (provider === 'ollama') {
     url = `${ollamaBase()}/api/chat`;
     body = { model: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b', messages: msgs, stream: false, options: { temperature: 0.4, num_predict: 1200 } };
@@ -331,7 +391,7 @@ async function askAI(prompt, system, history = []) {
 }
 const aiError = e => {
   const code = String(e && e.message || ''), prov = (process.env.AI_PROVIDER || '').toLowerCase(), model = currentModel();
-  const envName = { openai: 'OPENAI_MODEL', gemini: 'GEMINI_MODEL', groq: 'GROQ_MODEL', openrouter: 'OPENROUTER_MODEL', ollama: 'OLLAMA_MODEL' }[prov] || 'مدل';
+  const envName = { openai: 'OPENAI_MODEL', gemini: 'GEMINI_MODEL', groq: 'GROQ_MODEL', openrouter: 'OPENROUTER_MODEL', gapgpt: 'GAPGPT_MODEL', ollama: 'OLLAMA_MODEL' }[prov] || 'مدل';
   const map = {
     AI_NOT_CONFIGURED: [503, 'هوش مصنوعی تنظیم نشده است؛ ارائه‌دهنده و (در صورت نیاز) کلید API را در فایل .env وارد کنید.'],
     AI_RATE_LIMIT: [429, 'سقف درخواست یا سهمیه‌ی سرویس هوش مصنوعی پر شده؛ کمی بعد دوباره امتحان کنید.'],
@@ -547,7 +607,7 @@ function parseQuestion(b) {
   const correct = text(b.correct_answer, 500), points = Math.min(100, Math.max(0.25, Number(b.points) || 1));
   if (b.type === 'short') {   // سؤال تشریحی: بدون گزینه؛ «correct_answer» به‌عنوان پاسخ نمونه/بارم‌بندی برای معلم نگه داشته می‌شود
     if (prompt.length < 3) return { error: 'صورت سؤال تشریحی را بنویسید.' };
-    return { value: { type: 'short', prompt, options: [], correct: text(b.model_answer || b.correct_answer, 3000), points, explanation: text(b.explanation, 1000), lessonId: null } };
+    return { value: { type: 'short', prompt, options: [], correct: text(b.model_answer || b.correct_answer, 3000), points, explanation: text(b.explanation, 1000), lessonId: (b.lesson_id ? db.prepare('SELECT id FROM lessons WHERE id=?').get(Number(b.lesson_id)) : null)?.id ?? null } };
   }
   if (prompt.length < 3 || options.length !== 4 || new Set(options).size !== 4 || !options.includes(correct)) return { error: 'هر سؤال تستی باید دقیقاً چهار گزینه متفاوت و یک پاسخ صحیح از بین همان گزینه‌ها داشته باشد.' };
   const lesson = b.lesson_id ? db.prepare('SELECT id FROM lessons WHERE id=?').get(Number(b.lesson_id)) : null;
@@ -558,22 +618,22 @@ const requireTeacher = [requireAuth, requireRole('teacher', 'admin')];
 app.get('/api/exams', requireAuth, (req, res) => {
   finalizeExpired();
   const rows = req.user.role === 'student'
-    ? db.prepare("SELECT e.id,e.title,e.description,e.grade,e.duration_minutes,e.starts_at,e.ends_at,e.review_answers,e.created_at,u.name teacher_name,(SELECT COUNT(*) FROM questions q WHERE q.exam_id=e.id) question_count,a.id attempt_id,a.status attempt_status,a.score,a.max_score FROM exams e JOIN users u ON u.id=e.teacher_id LEFT JOIN attempts a ON a.exam_id=e.id AND a.student_id=? WHERE e.status='published' ORDER BY e.created_at DESC,e.id DESC").all(req.user.id)
-    : db.prepare("SELECT e.*,u.name teacher_name,(SELECT COUNT(*) FROM questions q WHERE q.exam_id=e.id) question_count,(SELECT COUNT(*) FROM attempts a WHERE a.exam_id=e.id) attempt_count FROM exams e JOIN users u ON u.id=e.teacher_id WHERE (? = 'admin' OR e.teacher_id=?) ORDER BY e.created_at DESC,e.id DESC").all(req.user.role, req.user.id);
+    ? db.prepare("SELECT e.id,e.title,e.description,e.grade,e.duration_minutes,e.starts_at,e.ends_at,e.review_answers,e.created_at,e.class_id,(SELECT name FROM classes WHERE id=e.class_id) class_name,u.name teacher_name,(SELECT COUNT(*) FROM questions q WHERE q.exam_id=e.id) question_count,a.id attempt_id,a.status attempt_status,a.score,a.max_score FROM exams e JOIN users u ON u.id=e.teacher_id LEFT JOIN attempts a ON a.exam_id=e.id AND a.student_id=? WHERE e.status='published' AND (e.class_id IS NULL OR e.class_id IN (SELECT class_id FROM class_members WHERE student_id=?)) ORDER BY e.created_at DESC,e.id DESC").all(req.user.id, req.user.id)
+    : db.prepare("SELECT e.*,(SELECT name FROM classes WHERE id=e.class_id) class_name,u.name teacher_name,(SELECT COUNT(*) FROM questions q WHERE q.exam_id=e.id) question_count,(SELECT COUNT(*) FROM attempts a WHERE a.exam_id=e.id) attempt_count FROM exams e JOIN users u ON u.id=e.teacher_id WHERE (? = 'admin' OR e.teacher_id=?) ORDER BY e.created_at DESC,e.id DESC").all(req.user.role, req.user.id);
   res.json({ exams: rows });
 });
 app.post('/api/exams', ...requireTeacher, (req, res) => {
   const p = parseExam(req.body); if (p.error) return res.status(400).json({ error: p.error });
-  const v = p.value;
-  const info = db.prepare("INSERT INTO exams(teacher_id,title,description,grade,duration_minutes,status,starts_at,ends_at,review_answers) VALUES(?,?,?,?,?,'draft',?,?,?)").run(req.user.id, v.title, v.description, v.grade, v.duration, v.starts, v.ends, v.review);
+  const v = p.value, ec = examClassId(req.body, req.user); if (ec.error) return res.status(400).json({ error: ec.error });
+  const info = db.prepare("INSERT INTO exams(teacher_id,title,description,grade,duration_minutes,status,starts_at,ends_at,review_answers,class_id) VALUES(?,?,?,?,?,'draft',?,?,?,?)").run(req.user.id, v.title, v.description, v.grade, v.duration, v.starts, v.ends, v.review, ec.id);
   res.status(201).json({ exam: db.prepare('SELECT * FROM exams WHERE id=?').get(info.lastInsertRowid) });
 });
 app.put('/api/exams/:id', ...requireTeacher, (req, res) => {
   const exam = ownsExam(Number(req.params.id), req.user); if (!exam) return res.status(404).json({ error: 'آزمون پیدا نشد یا اجازه ندارید.' });
   if (exam.status !== 'draft') return res.status(409).json({ error: 'فقط آزمون پیش‌نویس قابل ویرایش است.' });
   const p = parseExam(req.body); if (p.error) return res.status(400).json({ error: p.error });
-  const v = p.value;
-  db.prepare('UPDATE exams SET title=?,description=?,grade=?,duration_minutes=?,starts_at=?,ends_at=?,review_answers=? WHERE id=?').run(v.title, v.description, v.grade, v.duration, v.starts, v.ends, v.review, exam.id);
+  const v = p.value, ec = examClassId(req.body, req.user); if (ec.error) return res.status(400).json({ error: ec.error });
+  db.prepare('UPDATE exams SET title=?,description=?,grade=?,duration_minutes=?,starts_at=?,ends_at=?,review_answers=?,class_id=? WHERE id=?').run(v.title, v.description, v.grade, v.duration, v.starts, v.ends, v.review, ec.id, exam.id);
   res.json({ exam: db.prepare('SELECT * FROM exams WHERE id=?').get(exam.id) });
 });
 app.delete('/api/exams/:id', ...requireTeacher, (req, res) => {
@@ -614,7 +674,7 @@ app.post('/api/exams/:id/publish', ...requireTeacher, (req, res) => {
   const exam = ownsExam(Number(req.params.id), req.user); if (!exam) return res.status(404).json({ error: 'آزمون پیدا نشد یا اجازه ندارید.' });
   if (exam.status === 'published') return res.json({ ok: true });
   const n = db.prepare('SELECT COUNT(*) n FROM questions WHERE exam_id=?').get(exam.id).n;
-  const invalid = db.prepare("SELECT COUNT(*) n FROM questions WHERE exam_id=? AND (type!='mcq' OR correct_answer IS NULL OR correct_answer='' OR options='[]')").get(exam.id).n;
+  const invalid = db.prepare("SELECT COUNT(*) n FROM questions WHERE exam_id=? AND type='mcq' AND (correct_answer IS NULL OR correct_answer='' OR options='[]')").get(exam.id).n;
   if (n < 5) return res.status(400).json({ error: 'برای آزمون استاندارد حداقل ۵ سؤال تستی اضافه کنید.' });
   if (invalid) return res.status(400).json({ error: 'همه سؤال‌ها باید تستی و دارای پاسخ صحیح و گزینه باشند.' });
   db.prepare("UPDATE exams SET status='published' WHERE id=?").run(exam.id); res.json({ ok: true });
@@ -638,10 +698,10 @@ app.get('/api/exams/:id/stats', ...requireTeacher, (req, res) => {
   res.json({ finished: agg.n, in_progress: inProgress, average: agg.avg === null ? null : Math.round(agg.avg * 100) / 100, min: agg.min, max: agg.max, max_score: max, questions: perQ.map(q => ({ ...q, percent: q.answered ? Math.round(q.correct / q.answered * 100) : null })) });
 });
 app.get('/api/exams/:id', requireAuth, (req, res) => {
-  const e = db.prepare('SELECT id,title,description,grade,duration_minutes,starts_at,ends_at,review_answers,status,teacher_id FROM exams WHERE id=?').get(Number(req.params.id));
+  const e = db.prepare('SELECT id,title,description,grade,duration_minutes,starts_at,ends_at,review_answers,status,teacher_id,class_id FROM exams WHERE id=?').get(Number(req.params.id));
   const isStudent = req.user.role === 'student';
-  if (!e || (isStudent && e.status !== 'published') || (req.user.role === 'teacher' && e.teacher_id !== req.user.id)) return res.status(404).json({ error: 'آزمون پیدا نشد یا اجازه ندارید.' });
-  const { teacher_id, ...exam } = e;
+  if (!e || (isStudent && (e.status !== 'published' || !studentInExamClass(e, req.user))) || (req.user.role === 'teacher' && e.teacher_id !== req.user.id)) return res.status(404).json({ error: 'آزمون پیدا نشد یا اجازه ندارید.' });
+  const { teacher_id, class_id, ...exam } = e;
   const qs = db.prepare('SELECT id,prompt,type,options,points,correct_answer,explanation FROM questions WHERE exam_id=? ORDER BY id').all(e.id);
   // دانش‌آموز پیش از شروع آزمون سؤال‌ها را نمی‌بیند؛ سؤال‌ها فقط از مسیر start می‌آیند.
   if (isStudent) return res.json({ exam, question_count: qs.length, questions: [] });
@@ -650,6 +710,7 @@ app.get('/api/exams/:id', requireAuth, (req, res) => {
 app.post('/api/exams/:id/start', requireAuth, requireRole('student'), (req, res) => {
   finalizeExpired();
   const exam = db.prepare("SELECT * FROM exams WHERE id=? AND status='published'").get(Number(req.params.id));
+  if (exam && !studentInExamClass(exam, req.user)) return res.status(403).json({ error: 'این آزمون مخصوص کلاس دیگری است.' });
   if (!exam) return res.status(404).json({ error: 'آزمون منتشرشده‌ای با این شناسه پیدا نشد.' });
   const now = Date.now(), st = userTime(exam.starts_at), en = userTime(exam.ends_at);
   let attempt = db.prepare('SELECT * FROM attempts WHERE exam_id=? AND student_id=?').get(exam.id, req.user.id);
@@ -777,8 +838,26 @@ app.get('/api/admin/backup', requireAuth, requireRole('admin'), (req, res) => {
 });
 
 app.patch('/api/admin/users/:id/role',requireAuth,requireRole('admin'),(req,res)=>{const role=['student','teacher','admin'].includes(req.body.role)?req.body.role:null;if(!role)return res.status(400).json({error:'نقش نامعتبر است.'});if(Number(req.params.id)===req.user.id&&role!=='admin')return res.status(400).json({error:'نمی‌توانید نقش مدیر خودتان را حذف کنید.'});const info=db.prepare('UPDATE users SET role=? WHERE id=?').run(role,Number(req.params.id));if(!info.changes)return res.status(404).json({error:'کاربر پیدا نشد.'});res.json({ok:true});});
-app.post('/api/admin/lessons',requireAuth,requireRole('admin'),(req,res)=>{const grade=Number(req.body.grade),title=text(req.body.title,180),slug=text(req.body.slug,180).toLowerCase().replace(/[^a-z0-9-]/g,'-')||`lesson-${Date.now()}`,summary=text(req.body.summary,3000),points=Array.isArray(req.body.important_points)?req.body.important_points.map(x=>text(x,500)).slice(0,30):[],vocab=Array.isArray(req.body.vocabulary)?req.body.vocabulary.map(x=>text(x,300)).slice(0,50):[],status=['verified','needs_review','demo'].includes(req.body.content_status)?req.body.content_status:'needs_review';if(!(grade>=7&&grade<=12)||title.length<2)return res.status(400).json({error:'پایه ۷ تا ۱۲ و عنوان درس لازم است.'});try{const info=db.prepare('INSERT INTO lessons(grade,title,slug,summary,important_points,vocabulary,content_status,source_note) VALUES(?,?,?,?,?,?,?,?)').run(grade,title,slug,summary,JSON.stringify(points),JSON.stringify(vocab),status,text(req.body.source_note,500));res.status(201).json({id:info.lastInsertRowid});}catch(e){res.status(409).json({error:'این شناسه درس قبلاً استفاده شده است.'});}});
-app.put('/api/admin/lessons/:id',requireAuth,requireRole('admin'),(req,res)=>{const id=Number(req.params.id),grade=Number(req.body.grade),title=text(req.body.title,180),summary=text(req.body.summary,3000),points=Array.isArray(req.body.important_points)?req.body.important_points.map(x=>text(x,500)).slice(0,30):[],vocab=Array.isArray(req.body.vocabulary)?req.body.vocabulary.map(x=>text(x,300)).slice(0,50):[];if(!(grade>=7&&grade<=12)||title.length<2)return res.status(400).json({error:'پایه و عنوان درس معتبر نیست.'});const r=db.prepare('UPDATE lessons SET grade=?,title=?,summary=?,important_points=?,vocabulary=?,content_status=?,source_note=? WHERE id=?').run(grade,title,summary,JSON.stringify(points),JSON.stringify(vocab),['verified','needs_review','demo'].includes(req.body.content_status)?req.body.content_status:'needs_review',text(req.body.source_note,500),id);if(!r.changes)return res.status(404).json({error:'درس پیدا نشد.'});res.json({ok:true});});
+// وارد کردن گروهی درس‌ها (JSON). اگر slug تکراری باشد همان درس به‌روز می‌شود.
+app.post('/api/admin/lessons/import', requireAuth, requireRole('admin'), (req, res) => {
+  const list = Array.isArray(req.body.lessons) ? req.body.lessons.slice(0, 200) : [];
+  if (!list.length) return res.status(400).json({ error: 'آرایه‌ی «lessons» خالی است.' });
+  const arr = (v, n, m) => (Array.isArray(v) ? v : []).map(x => text(x, m)).filter(Boolean).slice(0, n);
+  let added = 0, updated = 0; const errors = [];
+  db.transaction(() => list.forEach((x, i) => {
+    const grade = Number(x.grade), title = text(x.title, 180);
+    if (!(grade >= 7 && grade <= 12) || title.length < 2) { errors.push(`مورد ${i + 1}: پایه (۷ تا ۱۲) یا عنوان نامعتبر است.`); return; }
+    const slug = text(x.slug, 180).toLowerCase().replace(/[^a-z0-9-]/g, '-') || `g${grade}-${Date.now()}-${i}`;
+    const status = ['verified', 'needs_review', 'demo'].includes(x.content_status) ? x.content_status : 'needs_review';
+    const v = [grade, title, text(x.summary, 3000), JSON.stringify(arr(x.important_points, 30, 500)), JSON.stringify(arr(x.vocabulary, 50, 300)), status, text(x.source_note, 500), text(x.body, 40000)];
+    const ex = db.prepare('SELECT id FROM lessons WHERE slug=?').get(slug);
+    if (ex) { db.prepare('UPDATE lessons SET grade=?,title=?,summary=?,important_points=?,vocabulary=?,content_status=?,source_note=?,body=? WHERE id=?').run(...v, ex.id); updated++; }
+    else { db.prepare('INSERT INTO lessons(grade,title,summary,important_points,vocabulary,content_status,source_note,body,slug) VALUES(?,?,?,?,?,?,?,?,?)').run(...v, slug); added++; }
+  }))();
+  res.json({ added, updated, errors });
+});
+app.post('/api/admin/lessons',requireAuth,requireRole('admin'),(req,res)=>{const grade=Number(req.body.grade),title=text(req.body.title,180),slug=text(req.body.slug,180).toLowerCase().replace(/[^a-z0-9-]/g,'-')||`lesson-${Date.now()}`,summary=text(req.body.summary,3000),points=Array.isArray(req.body.important_points)?req.body.important_points.map(x=>text(x,500)).slice(0,30):[],vocab=Array.isArray(req.body.vocabulary)?req.body.vocabulary.map(x=>text(x,300)).slice(0,50):[],status=['verified','needs_review','demo'].includes(req.body.content_status)?req.body.content_status:'needs_review';if(!(grade>=7&&grade<=12)||title.length<2)return res.status(400).json({error:'پایه ۷ تا ۱۲ و عنوان درس لازم است.'});try{const info=db.prepare('INSERT INTO lessons(grade,title,slug,summary,important_points,vocabulary,content_status,source_note,body) VALUES(?,?,?,?,?,?,?,?,?)').run(grade,title,slug,summary,JSON.stringify(points),JSON.stringify(vocab),status,text(req.body.source_note,500),text(req.body.body,40000));res.status(201).json({id:info.lastInsertRowid});}catch(e){res.status(409).json({error:'این شناسه درس قبلاً استفاده شده است.'});}});
+app.put('/api/admin/lessons/:id',requireAuth,requireRole('admin'),(req,res)=>{const id=Number(req.params.id),grade=Number(req.body.grade),title=text(req.body.title,180),summary=text(req.body.summary,3000),points=Array.isArray(req.body.important_points)?req.body.important_points.map(x=>text(x,500)).slice(0,30):[],vocab=Array.isArray(req.body.vocabulary)?req.body.vocabulary.map(x=>text(x,300)).slice(0,50):[];if(!(grade>=7&&grade<=12)||title.length<2)return res.status(400).json({error:'پایه و عنوان درس معتبر نیست.'});const r=db.prepare('UPDATE lessons SET grade=?,title=?,summary=?,important_points=?,vocabulary=?,content_status=?,source_note=?,body=? WHERE id=?').run(grade,title,summary,JSON.stringify(points),JSON.stringify(vocab),['verified','needs_review','demo'].includes(req.body.content_status)?req.body.content_status:'needs_review',text(req.body.source_note,500),text(req.body.body,40000),id);if(!r.changes)return res.status(404).json({error:'درس پیدا نشد.'});res.json({ok:true});});
 app.delete('/api/admin/lessons/:id',requireAuth,requireRole('admin'),(req,res)=>{const r=db.prepare('DELETE FROM lessons WHERE id=?').run(Number(req.params.id));if(r.changes)db.prepare("DELETE FROM bookmarks WHERE kind='lesson' AND ref_id=?").run(Number(req.params.id));if(!r.changes)return res.status(404).json({error:'درس پیدا نشد.'});res.json({ok:true});});
 app.post('/api/admin/poems',requireAuth,requireRole('admin'),(req,res)=>{const title=text(req.body.title,180),poet=text(req.body.poet,100),grade=Number(req.body.grade),body=text(req.body.text,5000),lit=Array.isArray(req.body.literary_notes)?req.body.literary_notes.map(x=>text(x,500)).slice(0,20):[],gram=Array.isArray(req.body.grammar_notes)?req.body.grammar_notes.map(x=>text(x,500)).slice(0,20):[];if(title.length<2||body.length<5||!(grade>=7&&grade<=12))return res.status(400).json({error:'عنوان، متن شعر و پایه معتبر لازم است.'});const r=db.prepare('INSERT INTO poems(title,poet,grade,text,literary_notes,grammar_notes,source_note) VALUES(?,?,?,?,?,?,?)').run(title,poet||'نامشخص',grade,body,JSON.stringify(lit),JSON.stringify(gram),text(req.body.source_note,500)||'نیازمند بررسی منبع معتبر');res.status(201).json({id:r.lastInsertRowid});});
 app.put('/api/admin/poems/:id',requireAuth,requireRole('admin'),(req,res)=>{const title=text(req.body.title,180),poet=text(req.body.poet,100),grade=Number(req.body.grade),body=text(req.body.text,5000),lit=Array.isArray(req.body.literary_notes)?req.body.literary_notes.map(x=>text(x,500)).slice(0,20):[],gram=Array.isArray(req.body.grammar_notes)?req.body.grammar_notes.map(x=>text(x,500)).slice(0,20):[];if(title.length<2||body.length<5||!(grade>=7&&grade<=12))return res.status(400).json({error:'عنوان، متن شعر و پایه معتبر لازم است.'});const r=db.prepare('UPDATE poems SET title=?,poet=?,grade=?,text=?,literary_notes=?,grammar_notes=?,source_note=? WHERE id=?').run(title,poet||'نامشخص',grade,body,JSON.stringify(lit),JSON.stringify(gram),text(req.body.source_note,500),Number(req.params.id));if(!r.changes)return res.status(404).json({error:'شعر پیدا نشد.'});res.json({ok:true});});
@@ -786,6 +865,7 @@ app.delete('/api/admin/poems/:id',requireAuth,requireRole('admin'),(req,res)=>{c
 app.get('/api/admin/poems',requireAuth,requireRole('admin'),(req,res)=>res.json({poems:db.prepare('SELECT * FROM poems ORDER BY grade,id').all().map(p=>({...p,literary_notes:parseJSON(p.literary_notes),grammar_notes:parseJSON(p.grammar_notes)}))}));
 app.get('/api/admin/overview',requireAuth,requireRole('admin','teacher'),(req,res)=>{const scoped=req.user.role==='admin';const exams=scoped?db.prepare('SELECT COUNT(*) n FROM exams').get().n:db.prepare('SELECT COUNT(*) n FROM exams WHERE teacher_id=?').get(req.user.id).n;res.json({users:scoped?db.prepare('SELECT COUNT(*) n FROM users').get().n:undefined,lessons:db.prepare('SELECT COUNT(*) n FROM lessons').get().n,exams,attempts:scoped?db.prepare('SELECT COUNT(*) n FROM attempts').get().n:db.prepare('SELECT COUNT(*) n FROM attempts a JOIN exams e ON e.id=a.exam_id WHERE e.teacher_id=?').get(req.user.id).n,ai:aiStatus()});});
 // ───────────────────────── شاعران (مدیریت توسط مدیر) ─────────────────────────
+try { db.prepare("ALTER TABLE lessons ADD COLUMN body TEXT NOT NULL DEFAULT ''").run(); } catch { /* ستون از قبل هست */ }
 try { db.prepare("ALTER TABLE poets ADD COLUMN photo TEXT NOT NULL DEFAULT ''").run(); } catch { /* ستون از قبل هست */ }
 try {   // بارگذاری یک‌باره‌ی شاعران اولیه (قابل ویرایش و حذف از پنل مدیر)
   if (!db.prepare("SELECT value FROM settings WHERE key='poets_seeded'").get()) {
@@ -842,6 +922,544 @@ app.delete('/api/admin/music', requireAuth, requireRole('admin'), (req, res) => 
   try { fs.unlinkSync(musicFile); } catch { /* فایلی نبود */ }
   db.prepare("DELETE FROM settings WHERE key='music_meta'").run(); res.json({ ok: true });
 });
+// ───────────── کتاب‌های درسی: آرایه ادبی / معنی واژگان / نمونه سؤال (با عکس) ─────────────
+try { db.prepare('ALTER TABLE exams ADD COLUMN class_id INTEGER').run(); } catch { /* ستون از قبل هست؛ آزمون‌های قبلی همگانی می‌مانند */ }
+try { db.prepare("ALTER TABLE book_items ADD COLUMN examples TEXT NOT NULL DEFAULT ''").run(); } catch { /* ستون از قبل هست؛ دیتای قبلی حفظ می‌شود */ }
+const BOOK_KINDS = ['device', 'vocab', 'sample'];
+const mediaDir = path.join(dataDir, 'book-media'); fs.mkdirSync(mediaDir, { recursive: true });
+const MEDIA_TYPES = { 'image/jpeg': 'image', 'image/png': 'image', 'image/webp': 'image', 'image/gif': 'image', 'video/mp4': 'video', 'video/webm': 'video' };
+const mediaPath = id => path.join(mediaDir, String(Number(id)));
+const parseBook = b => {
+  const grade = Number(b.grade), kind = String(b.kind || ''), title = text(b.title, 300);
+  if (!(grade >= 7 && grade <= 12) || !BOOK_KINDS.includes(kind) || !title) return { error: 'پایه (۷ تا ۱۲)، نوع و عنوان لازم است.' };
+  const image = photoField(b.photo, 420000); if (image === false) return { error: 'عکس نامعتبر است یا بزرگ‌تر از حد مجاز است.' };
+  return { v: { grade, kind, title, body: text(b.body, 8000), answer: text(b.answer, 8000), examples: text(b.examples, 30000), sort: Number.isFinite(Number(b.sort)) ? Number(b.sort) : 999, image } };
+};
+app.get('/api/book', (req, res) => {
+  const g = Number(req.query.grade), k = String(req.query.kind || ''), w = [], a = [];
+  if (g >= 7 && g <= 12) { w.push('grade=?'); a.push(g); } if (BOOK_KINDS.includes(k)) { w.push('kind=?'); a.push(k); }
+  const items = db.prepare(`SELECT id,grade,kind,title,body,answer,examples,sort,image AS photo FROM book_items ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY grade,kind,sort,id`).all(...a);
+  const media = items.length ? db.prepare(`SELECT id,item_id,kind,name FROM book_media WHERE item_id IN (${items.map(() => '?').join(',')}) ORDER BY id`).all(...items.map(i => i.id)) : [];
+  items.forEach(i => { i.media = media.filter(m => m.item_id === i.id).map(m => ({ id: m.id, kind: m.kind, name: m.name, url: '/api/book-media/' + m.id })); });
+  res.set('Cache-Control', 'no-store').json({ items });
+});
+app.post('/api/admin/book', requireAuth, requireRole('admin'), (req, res) => {
+  const p = parseBook(req.body); if (p.error) return res.status(400).json({ error: p.error });
+  const i = db.prepare('INSERT INTO book_items(grade,kind,title,body,answer,examples,image,sort) VALUES(?,?,?,?,?,?,?,?)').run(p.v.grade, p.v.kind, p.v.title, p.v.body, p.v.answer, p.v.examples, p.v.image || '', p.v.sort); res.status(201).json({ id: i.lastInsertRowid });
+});
+app.put('/api/admin/book/:id', requireAuth, requireRole('admin'), (req, res) => {
+  const p = parseBook(req.body); if (p.error) return res.status(400).json({ error: p.error });
+  const r = db.prepare('UPDATE book_items SET grade=?,kind=?,title=?,body=?,answer=?,examples=?,image=COALESCE(?,image),sort=? WHERE id=?').run(p.v.grade, p.v.kind, p.v.title, p.v.body, p.v.answer, p.v.examples, p.v.image, p.v.sort, Number(req.params.id));
+  if (!r.changes) return res.status(404).json({ error: 'مورد پیدا نشد.' }); res.json({ ok: true });
+});
+app.delete('/api/admin/book/:id', requireAuth, requireRole('admin'), (req, res) => {
+  for (const m of db.prepare('SELECT id FROM book_media WHERE item_id=?').all(Number(req.params.id))) { try { fs.unlinkSync(mediaPath(m.id)); } catch { /* نبود */ } }
+  db.prepare('DELETE FROM book_media WHERE item_id=?').run(Number(req.params.id));
+  const r = db.prepare('DELETE FROM book_items WHERE id=?').run(Number(req.params.id)); if (!r.changes) return res.status(404).json({ error: 'مورد پیدا نشد.' }); res.json({ ok: true });
+});
+// ── رسانه‌ی هر مورد کتاب (عکس و ویدیو): فایل روی دیسک، کنار دیتابیس، ذخیره می‌شود ──
+app.post('/api/admin/book/:id/media', requireAuth, requireRole('admin'), express.raw({ type: () => true, limit: '120mb' }), (req, res) => {
+  const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase(), kind = MEDIA_TYPES[type];
+  if (!kind) return res.status(400).json({ error: 'فقط عکس (JPG، PNG، WEBP، GIF) یا ویدیو (MP4، WEBM) پذیرفته می‌شود.' });
+  if (!db.prepare('SELECT id FROM book_items WHERE id=?').get(Number(req.params.id))) return res.status(404).json({ error: 'ابتدا مورد را ذخیره کنید.' });
+  if (!Buffer.isBuffer(req.body) || req.body.length < 100) return res.status(400).json({ error: 'فایل خالی یا خراب است.' });
+  if (kind === 'image' && req.body.length > 12 * 1024 * 1024) return res.status(400).json({ error: 'حجم عکس بیش از ۱۲ مگابایت است.' });
+  let name = ''; try { name = text(decodeURIComponent(String(req.headers['x-file-name'] || '')), 120); } catch { /* نام نامعتبر */ }
+  const i = db.prepare('INSERT INTO book_media(item_id,kind,mime,name) VALUES(?,?,?,?)').run(Number(req.params.id), kind, type, name);
+  fs.writeFileSync(mediaPath(i.lastInsertRowid), req.body); res.status(201).json({ id: i.lastInsertRowid });
+});
+app.get('/api/book-media/:id', (req, res) => {
+  const m = db.prepare('SELECT mime FROM book_media WHERE id=?').get(Number(req.params.id)); if (!m || !fs.existsSync(mediaPath(req.params.id))) return res.status(404).end();
+  res.sendFile(mediaPath(req.params.id), { headers: { 'Content-Type': m.mime, 'Cache-Control': 'public, max-age=86400' }, acceptRanges: true });
+});
+app.delete('/api/admin/book-media/:id', requireAuth, requireRole('admin'), (req, res) => {
+  try { fs.unlinkSync(mediaPath(req.params.id)); } catch { /* نبود */ }
+  const r = db.prepare('DELETE FROM book_media WHERE id=?').run(Number(req.params.id)); if (!r.changes) return res.status(404).json({ error: 'فایل پیدا نشد.' }); res.json({ ok: true });
+});
+// ───────────── کلاس‌های مجازی: معلم کلاس می‌سازد، دانش‌آموز با کد عضو می‌شود ─────────────
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const newClassCode = () => { for (let t = 0; t < 30; t++) { let c = ''; for (let i = 0; i < 6; i++) c += CODE_CHARS[require('crypto').randomInt(CODE_CHARS.length)]; if (!db.prepare('SELECT 1 FROM classes WHERE code=?').get(c)) return c; } throw new Error('کد یکتا ساخته نشد.'); };
+const joinLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false, message: { error: 'تعداد تلاش‌ها زیاد بود؛ چند دقیقه بعد دوباره امتحان کنید.' } });
+const ownClass = (id, user) => { const c = db.prepare('SELECT c.*,u.name teacher_name FROM classes c JOIN users u ON u.id=c.teacher_id WHERE c.id=?').get(Number(id)); return c && (user.role === 'admin' || c.teacher_id === user.id) ? c : null; };
+app.post('/api/classes', requireTeacher, (req, res) => {
+  const name = text(req.body.name, 80), grade = Number(req.body.grade);
+  if (name.length < 2 || !(grade >= 7 && grade <= 12)) return res.status(400).json({ error: 'نام کلاس و پایه (۷ تا ۱۲) لازم است.' });
+  const i = db.prepare('INSERT INTO classes(teacher_id,name,grade,code) VALUES(?,?,?,?)').run(req.user.id, name, grade, newClassCode()); res.status(201).json({ id: i.lastInsertRowid });
+});
+app.get('/api/classes', requireAuth, (req, res) => {
+  const r = req.user.role, sel = 'SELECT c.id,c.name,c.grade,c.code,c.created_at,u.name teacher_name,(SELECT COUNT(*) FROM class_members m WHERE m.class_id=c.id) members FROM classes c JOIN users u ON u.id=c.teacher_id';
+  let rows;
+  if (r === 'student') rows = db.prepare(sel + ' JOIN class_members mm ON mm.class_id=c.id WHERE mm.student_id=? ORDER BY c.id DESC').all(req.user.id).map(x => ({ ...x, code: undefined }));
+  else if (r === 'teacher') rows = db.prepare(sel + ' WHERE c.teacher_id=? ORDER BY c.id DESC').all(req.user.id);
+  else rows = db.prepare(sel + ' ORDER BY c.id DESC').all();
+  res.set('Cache-Control', 'no-store').json({ classes: rows });
+});
+app.post('/api/classes/join', requireAuth, requireRole('student'), joinLimiter, (req, res) => {
+  const code = text(req.body.code, 20).toUpperCase().replace(/[^A-Z0-9]/g, ''), c = code ? db.prepare('SELECT id,name FROM classes WHERE code=?').get(code) : null;
+  if (!c) return res.status(404).json({ error: 'کلاسی با این کد پیدا نشد؛ کد را از معلم بپرسید.' });
+  db.prepare('INSERT OR IGNORE INTO class_members(class_id,student_id) VALUES(?,?)').run(c.id, req.user.id); res.json({ ok: true, name: c.name });
+});
+app.get('/api/classes/:id', requireAuth, (req, res) => {
+  if (req.user.role === 'student') {
+    const c = db.prepare('SELECT c.id,c.name,c.grade,u.name teacher_name FROM classes c JOIN users u ON u.id=c.teacher_id JOIN class_members m ON m.class_id=c.id WHERE c.id=? AND m.student_id=?').get(Number(req.params.id), req.user.id);
+    return c ? res.json({ class: c }) : res.status(404).json({ error: 'کلاس پیدا نشد.' });
+  }
+  const c = ownClass(req.params.id, req.user); if (!c) return res.status(404).json({ error: 'کلاس پیدا نشد.' });
+  const members = db.prepare(`SELECT u.id,u.name,u.email,m.joined_at,
+    (SELECT COUNT(*) FROM attempts a JOIN exams e ON e.id=a.exam_id WHERE a.student_id=u.id AND a.status IN ('submitted','graded') AND e.teacher_id=?) attempts,
+    (SELECT AVG(100.0*a.score/a.max_score) FROM attempts a JOIN exams e ON e.id=a.exam_id WHERE a.student_id=u.id AND a.status IN ('submitted','graded') AND a.max_score>0 AND a.score IS NOT NULL AND e.teacher_id=?) avg_pct
+    FROM class_members m JOIN users u ON u.id=m.student_id WHERE m.class_id=? ORDER BY u.name`).all(c.teacher_id, c.teacher_id, c.id);
+  res.set('Cache-Control', 'no-store').json({ class: c, members: members.map(m => ({ ...m, avg_pct: m.avg_pct === null ? null : Math.round(m.avg_pct * 10) / 10 })) });
+});
+app.post('/api/classes/:id/code', requireTeacher, (req, res) => { const c = ownClass(req.params.id, req.user); if (!c) return res.status(404).json({ error: 'کلاس پیدا نشد.' }); const code = newClassCode(); db.prepare('UPDATE classes SET code=? WHERE id=?').run(code, c.id); res.json({ code }); });
+app.delete('/api/classes/:id/members/:sid', requireTeacher, (req, res) => { const c = ownClass(req.params.id, req.user); if (!c) return res.status(404).json({ error: 'کلاس پیدا نشد.' }); db.prepare('DELETE FROM class_members WHERE class_id=? AND student_id=?').run(c.id, Number(req.params.sid)); res.json({ ok: true }); });
+app.delete('/api/classes/:id/leave', requireAuth, requireRole('student'), (req, res) => { db.prepare('DELETE FROM class_members WHERE class_id=? AND student_id=?').run(Number(req.params.id), req.user.id); res.json({ ok: true }); });
+app.delete('/api/classes/:id', requireTeacher, (req, res) => { const c = ownClass(req.params.id, req.user); if (!c) return res.status(404).json({ error: 'کلاس پیدا نشد.' }); for (const a of db.prepare('SELECT id FROM assignments WHERE class_id=?').all(c.id)) { for (const x of db.prepare('SELECT id FROM assignment_submissions WHERE assignment_id=?').all(a.id)) { try { fs.unlinkSync(subPath(x.id)); } catch { /* نبود */ } } db.prepare('DELETE FROM assignment_submissions WHERE assignment_id=?').run(a.id); } db.prepare('DELETE FROM assignments WHERE class_id=?').run(c.id); db.prepare('DELETE FROM calendar_events WHERE class_id=?').run(c.id); for (const m of db.prepare('SELECT id FROM class_materials WHERE class_id=?').all(c.id)) { try { fs.unlinkSync(matPath(m.id)); } catch { /* نبود */ } } db.prepare('DELETE FROM class_materials WHERE class_id=?').run(c.id); db.prepare("UPDATE exams SET status='archived' WHERE class_id=?").run(c.id); db.prepare('DELETE FROM class_members WHERE class_id=?').run(c.id); db.prepare('DELETE FROM classes WHERE id=?').run(c.id); res.json({ ok: true }); });
+// ───────────── کارنامه و تحلیل پیشرفت / تحلیل کلاس ─────────────
+const JAL = new Intl.DateTimeFormat('fa-IR-u-ca-persian-nu-latn', { year: 'numeric', month: 'numeric', timeZone: 'Asia/Tehran' });
+const parseDb = s => new Date(String(s).replace(' ', 'T') + 'Z');
+const jalaliKey = d => { const p = Object.fromEntries(JAL.formatToParts(d).map(x => [x.type, x.value])); return `${p.year}-${String(p.month).padStart(2, '0')}`; };
+const weekStart = d => { const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 1) % 7)); return x; };   // هفته از شنبه شروع می‌شود
+const round1 = n => Math.round(n * 10) / 10;
+const TOPIC_SQL = `SELECT q.lesson_id,l.title,l.grade,SUM(COALESCE(ans.awarded_points,0)) earned,SUM(q.points) total,COUNT(*) n
+  FROM attempts a JOIN exams e ON e.id=a.exam_id JOIN questions q ON q.exam_id=e.id LEFT JOIN answers ans ON ans.attempt_id=a.id AND ans.question_id=q.id JOIN lessons l ON l.id=q.lesson_id
+  WHERE a.student_id=? AND a.status IN ('submitted','graded') AND NOT (q.type='short' AND a.status!='graded')`;
+function reportFor(studentId, classId) {
+  const filt = classId ? ' AND e.class_id=?' : '', args = classId ? [studentId, classId] : [studentId];
+  const all = db.prepare(`SELECT a.id,a.status,a.score,a.max_score,a.submitted_at,e.title,e.grade,(SELECT COUNT(*) FROM questions q WHERE q.exam_id=e.id AND q.type='short') shorts
+    FROM attempts a JOIN exams e ON e.id=a.exam_id WHERE a.student_id=? AND a.status IN ('submitted','graded') AND a.max_score>0 AND a.score IS NOT NULL${filt} ORDER BY a.submitted_at`).all(...args)
+    .map(a => ({ ...a, pending: a.status === 'submitted' && a.shorts > 0, pct: round1(100 * a.score / a.max_score), date: a.submitted_at }));
+  const done = all.filter(a => !a.pending), pct = x => x.pct;
+  const now = new Date(), weeks = [], months = [];
+  const ws0 = weekStart(now);
+  for (let i = 7; i >= 0; i--) { const d = new Date(ws0); d.setUTCDate(d.getUTCDate() - 7 * i); weeks.push({ start: d.toISOString().slice(0, 10), vals: [] }); }
+  for (let i = 5; i >= 0; i--) { const d = new Date(now); d.setUTCDate(15); d.setUTCMonth(d.getUTCMonth() - i); months.push({ key: jalaliKey(d), vals: [] }); }
+  for (const a of done) {
+    const d = parseDb(a.submitted_at), w = weeks.find(x => x.start === weekStart(d).toISOString().slice(0, 10)); if (w) w.vals.push(a.pct);
+    const m = months.find(x => x.key === jalaliKey(d)); if (m) m.vals.push(a.pct);
+  }
+  const avgOf = v => v.length ? round1(v.reduce((s, x) => s + x, 0) / v.length) : null;
+  const topics = db.prepare(TOPIC_SQL + filt + ' GROUP BY q.lesson_id ORDER BY l.grade,l.id').all(...args).filter(t => t.total > 0).map(t => ({ lesson_id: t.lesson_id, title: t.title, grade: t.grade, questions: t.n, pct: round1(100 * t.earned / t.total) }));
+  return {
+    summary: { count: done.length, pending: all.length - done.length, avg: avgOf(done.map(pct)), best: done.length ? Math.max(...done.map(pct)) : null, latest: done.length ? done[done.length - 1].pct : null },
+    weekly: weeks.map(w => ({ start: w.start, avg: avgOf(w.vals), count: w.vals.length })), monthly: months.map(m => ({ key: m.key, avg: avgOf(m.vals), count: m.vals.length })),
+    topics, strengths: topics.filter(t => t.pct >= 75).sort((a, b) => b.pct - a.pct).slice(0, 4), weaknesses: topics.filter(t => t.pct < 60).sort((a, b) => a.pct - b.pct).slice(0, 4),
+    exams: all.slice().reverse().slice(0, 20).map(a => ({ title: a.title, grade: a.grade, score: a.score, max: a.max_score, pct: a.pct, pending: a.pending, date: a.submitted_at })),
+  };
+}
+app.get('/api/me/report', requireAuth, requireRole('student'), (req, res) => res.set('Cache-Control', 'no-store').json(reportFor(req.user.id, null)));
+app.get('/api/classes/:id/students/:sid/report', requireTeacher, (req, res) => {
+  const c = ownClass(req.params.id, req.user); if (!c) return res.status(404).json({ error: 'کلاس پیدا نشد.' });
+  const m = db.prepare('SELECT u.id,u.name FROM class_members m JOIN users u ON u.id=m.student_id WHERE m.class_id=? AND m.student_id=?').get(c.id, Number(req.params.sid));
+  if (!m) return res.status(404).json({ error: 'این دانش‌آموز عضو کلاس نیست.' });
+  res.set('Cache-Control', 'no-store').json({ student: m, report: reportFor(m.id, c.id) });
+});
+app.get('/api/classes/:id/analytics', requireTeacher, (req, res) => {
+  const c = ownClass(req.params.id, req.user); if (!c) return res.status(404).json({ error: 'کلاس پیدا نشد.' });
+  const members = db.prepare('SELECT u.id,u.name FROM class_members m JOIN users u ON u.id=m.student_id WHERE m.class_id=? ORDER BY u.name').all(c.id);
+  const exams = db.prepare("SELECT id,title FROM exams WHERE class_id=? AND status IN ('published','archived')").all(c.id);
+  const rows = db.prepare(`SELECT a.student_id,a.exam_id,a.status,a.score,a.max_score,(SELECT COUNT(*) FROM questions q WHERE q.exam_id=a.exam_id AND q.type='short') shorts FROM attempts a JOIN exams e ON e.id=a.exam_id
+    WHERE e.class_id=? AND a.status IN ('submitted','graded') AND a.max_score>0 AND a.score IS NOT NULL AND a.student_id IN (SELECT student_id FROM class_members WHERE class_id=?)`).all(c.id, c.id).filter(a => !(a.status === 'submitted' && a.shorts > 0));
+  const byStudent = new Map(); for (const a of rows) { const l = byStudent.get(a.student_id) || []; l.push(100 * a.score / a.max_score); byStudent.set(a.student_id, l); }
+  const students = members.map(m => { const l = byStudent.get(m.id) || []; return { id: m.id, name: m.name, attempts: l.length, avg: l.length ? round1(l.reduce((s, x) => s + x, 0) / l.length) : null }; });
+  const withAvg = students.filter(s => s.avg !== null);
+  const dist = [['زیر ۵۰٪', s => s.avg < 50], ['۵۰ تا ۶۹٪', s => s.avg >= 50 && s.avg < 70], ['۷۰ تا ۸۴٪', s => s.avg >= 70 && s.avg < 85], ['۸۵٪ و بالاتر', s => s.avg >= 85]].map(([label, f]) => ({ label, count: withAvg.filter(f).length }));
+  const tRows = db.prepare(`SELECT a.student_id,q.lesson_id,l.title,SUM(COALESCE(ans.awarded_points,0)) earned,SUM(q.points) total FROM attempts a JOIN exams e ON e.id=a.exam_id JOIN questions q ON q.exam_id=e.id
+    LEFT JOIN answers ans ON ans.attempt_id=a.id AND ans.question_id=q.id JOIN lessons l ON l.id=q.lesson_id WHERE e.class_id=? AND a.status IN ('submitted','graded') AND NOT (q.type='short' AND a.status!='graded')
+    AND a.student_id IN (SELECT student_id FROM class_members WHERE class_id=?) GROUP BY a.student_id,q.lesson_id`).all(c.id, c.id);
+  const tm = new Map(); for (const r of tRows) { if (!(r.total > 0)) continue; const t = tm.get(r.lesson_id) || { lesson_id: r.lesson_id, title: r.title, earned: 0, total: 0, students: 0, struggling: 0 }; t.earned += r.earned; t.total += r.total; t.students++; if (100 * r.earned / r.total < 50) t.struggling++; tm.set(r.lesson_id, t); }
+  const topics = [...tm.values()].map(t => ({ lesson_id: t.lesson_id, title: t.title, pct: round1(100 * t.earned / t.total), students: t.students, struggling: t.struggling })).sort((a, b) => a.pct - b.pct);
+  const hard = db.prepare(`SELECT q.id,q.prompt,e.title exam_title,SUM(COALESCE(ans.awarded_points,0)) earned,SUM(q.points) total,COUNT(*) n FROM attempts a JOIN exams e ON e.id=a.exam_id JOIN questions q ON q.exam_id=e.id
+    LEFT JOIN answers ans ON ans.attempt_id=a.id AND ans.question_id=q.id WHERE e.class_id=? AND a.status IN ('submitted','graded') AND NOT (q.type='short' AND a.status!='graded') AND a.student_id IN (SELECT student_id FROM class_members WHERE class_id=?)
+    GROUP BY q.id HAVING total>0 ORDER BY earned*1.0/total ASC LIMIT 5`).all(c.id, c.id).map(h => ({ id: h.id, prompt: h.prompt.slice(0, 160), exam_title: h.exam_title, pct: round1(100 * h.earned / h.total), answered: h.n }));
+  const perExam = exams.map(e => { const l = rows.filter(a => a.exam_id === e.id).map(a => 100 * a.score / a.max_score); return { id: e.id, title: e.title, takers: l.length, avg: l.length ? round1(l.reduce((s, x) => s + x, 0) / l.length) : null }; });
+  const needsAttention = students.filter(s => (s.avg !== null && s.avg < 50) || (s.attempts === 0 && exams.length > 0)).map(s => ({ ...s, reason: s.attempts === 0 ? 'هنوز در هیچ آزمونی شرکت نکرده' : 'میانگین زیر ۵۰٪' }));
+  res.set('Cache-Control', 'no-store').json({ class: { id: c.id, name: c.name, grade: c.grade }, members: members.length, exams: exams.length,
+    classAvg: withAvg.length ? round1(withAvg.reduce((s, x) => s + x.avg, 0) / withAvg.length) : null, participation: members.length && exams.length ? round1(100 * rows.length / (members.length * exams.length)) : null,
+    students, distribution: dist, topics, hardestQuestions: hard, perExam, needsAttention });
+});
+// ───────────── تقویم تهران و ابزارهای مشترک چالش / تالار / لیگ ─────────────
+const TEH = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tehran', year: 'numeric', month: '2-digit', day: '2-digit' });
+const tehranDay = (d = new Date()) => TEH.format(d);   // YYYY-MM-DD
+const dayNumber = s => Math.floor(Date.parse(s + 'T00:00:00Z') / 86400000);
+const dayFromNumber = n => new Date(n * 86400000).toISOString().slice(0, 10);
+const weekStartOf = s => { const n = dayNumber(s), dow = new Date(n * 86400000).getUTCDay(); return dayFromNumber(n - ((dow + 1) % 7)); };   // شنبه
+const seededShuffle = (arr, seed) => { const a = arr.slice(); let t = (seed + 0x6D2B79F5) | 0; const rnd = () => { t = (t + 0x6D2B79F5) | 0; let r = Math.imul(t ^ (t >>> 15), 1 | t); r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r; return ((r ^ (r >>> 14)) >>> 0) / 4294967296; }; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const sessionUser = req => req.session && req.session.userId ? db.prepare('SELECT id,name,role,active FROM users WHERE id=?').get(req.session.userId) : null;
+
+// ───────────── چالش روزانه ─────────────
+const CHALLENGE_KINDS = { question: 'سؤال ادبی', riddle: 'معما', verse: 'تکمیل بیت', grammar: 'دستور زبان' };
+try {
+  if (!db.prepare("SELECT value FROM settings WHERE key='challenges_seeded'").get()) {
+    [['verse', 'تکمیل بیت', 'بیت زیر را کامل کنید:\nتوانا بود هر که دانا بود\nز دانش دل پیر ... بود', ['برنا', 'پیرا', 'دانا', 'توانا'], 'برنا', 'مصرع کامل: «ز دانش دل پیر برنا بود»؛ از فردوسی.'],
+     ['verse', 'تکمیل بیت', 'بیت زیر را کامل کنید:\nبنی‌آدم اعضای یک پیکرند\nکه در آفرینش ز یک ... اند', ['گوهر', 'کشور', 'خانه', 'پدر'], 'گوهر', 'این بیت از گلستان سعدی است.'],
+     ['question', 'سؤال ادبی', '«گلستان» اثر کدام نویسنده است؟', ['سعدی', 'حافظ', 'مولوی', 'نظامی'], 'سعدی', 'گلستان به نثر مسجع و آمیخته با شعر، اثر سعدی شیرازی است.'],
+     ['question', 'سؤال ادبی', '«شاهنامه» اثر کیست؟', ['فردوسی', 'رودکی', 'خیام', 'عطار'], 'فردوسی', 'فردوسی طوسی شاهنامه را سروده است.'],
+     ['question', 'سؤال ادبی', '«مثنوی معنوی» اثر کدام عارف است؟', ['مولانا', 'سنایی', 'عطار', 'جامی'], 'مولانا', 'مثنوی معنوی شش دفتر دارد و از مولانا جلال‌الدین بلخی است.'],
+     ['grammar', 'دستور زبان', 'در جمله‌ی «علی کتاب را خواند»، «کتاب» چه نقشی دارد؟', ['مفعول', 'فاعل', 'مسند', 'متمم'], 'مفعول', 'واژه‌ای که «را» می‌گیرد و کار روی آن انجام می‌شود، مفعول است.'],
+     ['grammar', 'دستور زبان', 'در عبارت «دانش‌آموز سخت‌کوش»، «سخت‌کوش» چه نوع واژه‌ای است؟', ['صفت', 'قید', 'ضمیر', 'فعل'], 'صفت', 'سخت‌کوش ویژگی دانش‌آموز را بیان می‌کند، پس صفت است.'],
+     ['question', 'آرایه ادبی', 'در جمله‌ی «او مانند شیر شجاع است» کدام آرایه به کار رفته است؟', ['تشبیه', 'استعاره', 'کنایه', 'جناس'], 'تشبیه', 'وجود ادات تشبیه «مانند» نشان می‌دهد آرایه، تشبیه است.'],
+     ['riddle', 'معما', 'چیست که هر چه از آن برداری بزرگ‌تر می‌شود؟', ['چاله', 'کوه', 'دریا', 'ابر'], 'چاله', 'هر چه خاک از چاله بردارند، چاله بزرگ‌تر می‌شود.'],
+     ['question', 'واژگان', 'معنی «ستایش» کدام است؟', ['ستودن', 'نکوهش', 'پنهان‌کاری', 'شکایت'], 'ستودن', 'ستایش یعنی ستودن و ثنا گفتن.']
+    ].forEach(c => db.prepare('INSERT INTO challenges(kind,title,prompt,options,answer,explanation) VALUES(?,?,?,?,?,?)').run(c[0], c[1], c[2], JSON.stringify(c[3]), c[4], c[5]));
+    db.prepare("INSERT INTO settings(key,value) VALUES('challenges_seeded','1')").run();
+  }
+} catch (e) { console.error('Challenge seed failed:', e.message); }
+const challengeFor = day => {
+  const fixed = db.prepare('SELECT * FROM challenges WHERE active=1 AND day=?').get(day); if (fixed) return fixed;
+  const pool = db.prepare('SELECT * FROM challenges WHERE active=1 AND day IS NULL ORDER BY id').all(); return pool.length ? pool[dayNumber(day) % pool.length] : null;
+};
+const challengeStreak = userId => {
+  const days = new Set(db.prepare('SELECT day FROM challenge_log WHERE user_id=?').all(userId).map(r => r.day)); const today = tehranDay(); let n = dayNumber(today);
+  if (!days.has(today)) n -= 1; let s = 0; while (days.has(dayFromNumber(n))) { s++; n--; } return s;
+};
+app.get('/api/challenge/today', (req, res) => {
+  const day = tehranDay(), c = challengeFor(day); res.set('Cache-Control', 'no-store');
+  if (!c) return res.json({ challenge: null });
+  const u = sessionUser(req), opts = seededShuffle(parseJSON(c.options), dayNumber(day) * 31 + c.id);
+  const out = { id: c.id, kind: c.kind, kindLabel: CHALLENGE_KINDS[c.kind] || 'چالش', title: c.title, prompt: c.prompt, options: opts, day };
+  const log = u && u.role === 'student' ? db.prepare('SELECT choice,correct FROM challenge_log WHERE user_id=? AND day=?').get(u.id, day) : null;
+  if (log) out.result = { choice: log.choice, correct: !!log.correct, answer: c.answer, explanation: c.explanation };
+  res.json({ challenge: out, role: u ? u.role : null, canAnswer: !!(u && u.role === 'student'), streak: u && u.role === 'student' ? challengeStreak(u.id) : 0 });
+});
+app.post('/api/challenge/answer', requireAuth, requireRole('student'), (req, res) => {
+  const day = tehranDay(), c = challengeFor(day); if (!c) return res.status(404).json({ error: 'امروز چالشی نیست.' });
+  if (db.prepare('SELECT 1 FROM challenge_log WHERE user_id=? AND day=?').get(req.user.id, day)) return res.status(409).json({ error: 'امروز به چالش پاسخ داده‌اید؛ فردا چالش تازه‌ای می‌آید.' });
+  const choice = text(req.body.choice, 300); if (!parseJSON(c.options).includes(choice)) return res.status(400).json({ error: 'گزینه نامعتبر است.' });
+  const ok = choice === c.answer; db.prepare('INSERT INTO challenge_log(user_id,day,challenge_id,choice,correct) VALUES(?,?,?,?,?)').run(req.user.id, day, c.id, choice, ok ? 1 : 0);
+  res.json({ correct: ok, answer: c.answer, explanation: c.explanation, streak: challengeStreak(req.user.id), points: ok ? 10 : 2 });
+});
+const parseChallenge = b => {
+  const options = [...new Set(String(b.options_text ?? '').split('\n').map(x => text(x, 300)).filter(Boolean))].slice(0, 6), answer = text(b.answer, 300), title = text(b.title, 100), prompt = text(b.prompt, 1500);
+  if (!CHALLENGE_KINDS[b.kind] || title.length < 2 || prompt.length < 3) return { error: 'نوع، عنوان و متن چالش لازم است.' };
+  if (options.length < 2) return { error: 'دست‌کم دو گزینه (هر گزینه در یک خط) بنویسید.' };
+  if (!options.includes(answer)) return { error: 'پاسخ درست باید دقیقاً یکی از گزینه‌ها باشد.' };
+  const day = text(b.day, 10); if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) return { error: 'تاریخ را به شکل 2026-11-05 بنویسید یا خالی بگذارید.' };
+  return { v: { kind: b.kind, title, prompt, options: JSON.stringify(options), answer, explanation: text(b.explanation, 1000), day: day || null } };
+};
+app.get('/api/admin/challenges', requireAuth, requireRole('admin'), (req, res) => res.set('Cache-Control', 'no-store').json({ items: db.prepare('SELECT id,kind,title,prompt,options,answer,explanation,day FROM challenges ORDER BY id DESC').all().map(c => ({ ...c, options_text: parseJSON(c.options).join('\n'), day: c.day || '' })) }));
+app.post('/api/admin/challenges', requireAuth, requireRole('admin'), (req, res) => { const p = parseChallenge(req.body); if (p.error) return res.status(400).json({ error: p.error }); const i = db.prepare('INSERT INTO challenges(kind,title,prompt,options,answer,explanation,day) VALUES(?,?,?,?,?,?,?)').run(p.v.kind, p.v.title, p.v.prompt, p.v.options, p.v.answer, p.v.explanation, p.v.day); res.status(201).json({ id: i.lastInsertRowid }); });
+app.put('/api/admin/challenges/:id', requireAuth, requireRole('admin'), (req, res) => { const p = parseChallenge(req.body); if (p.error) return res.status(400).json({ error: p.error }); const r = db.prepare('UPDATE challenges SET kind=?,title=?,prompt=?,options=?,answer=?,explanation=?,day=? WHERE id=?').run(p.v.kind, p.v.title, p.v.prompt, p.v.options, p.v.answer, p.v.explanation, p.v.day, Number(req.params.id)); if (!r.changes) return res.status(404).json({ error: 'چالش پیدا نشد.' }); res.json({ ok: true }); });
+app.delete('/api/admin/challenges/:id', requireAuth, requireRole('admin'), (req, res) => { const r = db.prepare('DELETE FROM challenges WHERE id=?').run(Number(req.params.id)); if (!r.changes) return res.status(404).json({ error: 'چالش پیدا نشد.' }); res.json({ ok: true }); });
+
+// ───────────── تالار گفت‌وگو (با نظارت معلم) ─────────────
+const forumLimiter = rateLimit({ windowMs: 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false, keyGenerator: req => 'u' + (req.user ? req.user.id : 'x'), validate: false, message: { error: 'خیلی سریع پیام می‌فرستید؛ یک دقیقه صبر کنید.' } });
+const boardInfo = (board, user) => {   // board: 'general' یا شناسه‌ی کلاس
+  if (board === 'general') return { id: 'general', class_id: null, name: 'تالار عمومی', mod: user.role !== 'student' };
+  const c = db.prepare('SELECT id,name,teacher_id FROM classes WHERE id=?').get(Number(board)); if (!c) return null;
+  const member = user.role === 'student' ? !!db.prepare('SELECT 1 FROM class_members WHERE class_id=? AND student_id=?').get(c.id, user.id) : (user.role === 'admin' || c.teacher_id === user.id);
+  return member ? { id: String(c.id), class_id: c.id, name: 'کلاس ' + c.name, mod: user.role === 'admin' || c.teacher_id === user.id } : null;
+};
+const shownName = (n, role, board) => role !== 'student' ? n + ' (معلم)' : (board.class_id ? n : (n.trim().split(/\s+/).length > 1 ? n.trim().split(/\s+/)[0] + ' ' + n.trim().split(/\s+/)[1][0] + '.' : n));
+app.get('/api/forum/boards', requireAuth, (req, res) => {
+  const r = req.user.role, rows = r === 'student' ? db.prepare('SELECT c.id,c.name FROM classes c JOIN class_members m ON m.class_id=c.id WHERE m.student_id=? ORDER BY c.name').all(req.user.id) : r === 'teacher' ? db.prepare('SELECT id,name FROM classes WHERE teacher_id=? ORDER BY name').all(req.user.id) : db.prepare('SELECT id,name FROM classes ORDER BY name').all();
+  res.json({ boards: [{ id: 'general', name: 'تالار عمومی' }, ...rows.map(c => ({ id: String(c.id), name: 'کلاس ' + c.name }))] });
+});
+app.get('/api/forum/topics', requireAuth, (req, res) => {
+  const b = boardInfo(String(req.query.board || 'general'), req.user); if (!b) return res.status(404).json({ error: 'تالار پیدا نشد.' });
+  const rows = db.prepare(`SELECT t.id,t.title,t.pinned,t.locked,t.created_at,t.last_activity,u.name author,u.role author_role,(SELECT COUNT(*) FROM forum_posts p WHERE p.topic_id=t.id AND p.hidden=0) replies
+    FROM forum_topics t JOIN users u ON u.id=t.user_id WHERE t.hidden=0 AND ${b.class_id ? 't.class_id=?' : 't.class_id IS NULL'} ORDER BY t.pinned DESC,t.last_activity DESC LIMIT 100`).all(...(b.class_id ? [b.class_id] : []));
+  res.set('Cache-Control', 'no-store').json({ board: { id: b.id, name: b.name, mod: b.mod }, topics: rows.map(t => ({ ...t, author: shownName(t.author, t.author_role, b), author_role: undefined })) });
+});
+app.post('/api/forum/topics', requireAuth, forumLimiter, (req, res) => {
+  const b = boardInfo(String(req.body.board || 'general'), req.user); if (!b) return res.status(404).json({ error: 'تالار پیدا نشد.' });
+  const title = text(req.body.title, 150), body = text(req.body.body, 4000); if (title.length < 3 || body.length < 3) return res.status(400).json({ error: 'عنوان و متن را بنویسید (دست‌کم ۳ نویسه).' });
+  const i = db.prepare('INSERT INTO forum_topics(class_id,user_id,title,body) VALUES(?,?,?,?)').run(b.class_id, req.user.id, title, body); res.status(201).json({ id: i.lastInsertRowid });
+});
+const topicAccess = (id, user) => { const t = db.prepare('SELECT t.*,u.name author,u.role author_role FROM forum_topics t JOIN users u ON u.id=t.user_id WHERE t.id=?').get(Number(id)); if (!t) return null; const b = boardInfo(t.class_id ? String(t.class_id) : 'general', user); return b ? { t, b } : null; };
+app.get('/api/forum/topics/:id', requireAuth, (req, res) => {
+  const a = topicAccess(req.params.id, req.user); if (!a || (a.t.hidden && !a.b.mod)) return res.status(404).json({ error: 'موضوع پیدا نشد.' });
+  const posts = db.prepare('SELECT p.id,p.body,p.hidden,p.created_at,p.user_id,u.name author,u.role author_role FROM forum_posts p JOIN users u ON u.id=p.user_id WHERE p.topic_id=? ORDER BY p.id').all(a.t.id).filter(p => !p.hidden || a.b.mod);
+  const t = a.t; res.set('Cache-Control', 'no-store').json({ board: { id: a.b.id, name: a.b.name, mod: a.b.mod }, topic: { id: t.id, title: t.title, body: t.body, pinned: t.pinned, locked: t.locked, hidden: t.hidden, created_at: t.created_at, author: shownName(t.author, t.author_role, a.b), mine: t.user_id === req.user.id },
+    posts: posts.map(p => ({ id: p.id, body: p.body, hidden: p.hidden, created_at: p.created_at, author: shownName(p.author, p.author_role, a.b), mine: p.user_id === req.user.id })) });
+});
+app.post('/api/forum/topics/:id/posts', requireAuth, forumLimiter, (req, res) => {
+  const a = topicAccess(req.params.id, req.user); if (!a || a.t.hidden) return res.status(404).json({ error: 'موضوع پیدا نشد.' });
+  if (a.t.locked && !a.b.mod) return res.status(403).json({ error: 'این گفت‌وگو توسط معلم بسته شده است.' });
+  const body = text(req.body.body, 3000); if (body.length < 2) return res.status(400).json({ error: 'متن پاسخ را بنویسید.' });
+  const i = db.prepare('INSERT INTO forum_posts(topic_id,user_id,body) VALUES(?,?,?)').run(a.t.id, req.user.id, body); db.prepare('UPDATE forum_topics SET last_activity=CURRENT_TIMESTAMP WHERE id=?').run(a.t.id); res.status(201).json({ id: i.lastInsertRowid });
+});
+app.post('/api/forum/topics/:id/flag', requireAuth, (req, res) => {   // فقط ناظر: سنجاق/قفل/پنهان
+  const a = topicAccess(req.params.id, req.user); if (!a || !a.b.mod) return res.status(404).json({ error: 'موضوع پیدا نشد.' });
+  const f = String(req.body.flag || ''), v = req.body.value ? 1 : 0; if (!['pinned', 'locked', 'hidden'].includes(f)) return res.status(400).json({ error: 'عملیات نامعتبر است.' });
+  db.prepare(`UPDATE forum_topics SET ${f}=? WHERE id=?`).run(v, a.t.id); res.json({ ok: true });
+});
+app.delete('/api/forum/posts/:id', requireAuth, (req, res) => {
+  const p = db.prepare('SELECT id,topic_id,user_id FROM forum_posts WHERE id=?').get(Number(req.params.id)); const a = p && topicAccess(p.topic_id, req.user);
+  if (!a || !(a.b.mod || p.user_id === req.user.id)) return res.status(404).json({ error: 'پیام پیدا نشد.' });
+  db.prepare('UPDATE forum_posts SET hidden=1 WHERE id=?').run(p.id); res.json({ ok: true });
+});
+app.post('/api/forum/report', requireAuth, (req, res) => {
+  const type = req.body.type === 'post' ? 'post' : 'topic', id = Number(req.body.id), reason = text(req.body.reason, 300);
+  const tid = type === 'post' ? (db.prepare('SELECT topic_id FROM forum_posts WHERE id=?').get(id) || {}).topic_id : id; if (!tid || !topicAccess(tid, req.user)) return res.status(404).json({ error: 'مورد پیدا نشد.' });
+  db.prepare('INSERT OR IGNORE INTO forum_reports(target_type,target_id,user_id,reason) VALUES(?,?,?,?)').run(type, id, req.user.id, reason); res.json({ ok: true });
+});
+app.get('/api/forum/reports', requireAuth, (req, res) => {
+  const b = boardInfo(String(req.query.board || 'general'), req.user); if (!b || !b.mod) return res.status(403).json({ error: 'فقط معلم یا مدیر.' });
+  const cw = b.class_id ? 't.class_id=?' : 't.class_id IS NULL', args = b.class_id ? [b.class_id] : [];
+  const t = db.prepare(`SELECT r.id,r.target_type,r.target_id,r.reason,r.created_at,t.id topic_id,t.title,t.body content FROM forum_reports r JOIN forum_topics t ON t.id=r.target_id WHERE r.resolved=0 AND r.target_type='topic' AND ${cw}`).all(...args);
+  const p = db.prepare(`SELECT r.id,r.target_type,r.target_id,r.reason,r.created_at,t.id topic_id,t.title,p.body content FROM forum_reports r JOIN forum_posts p ON p.id=r.target_id JOIN forum_topics t ON t.id=p.topic_id WHERE r.resolved=0 AND r.target_type='post' AND ${cw}`).all(...args);
+  res.set('Cache-Control', 'no-store').json({ reports: [...t, ...p].sort((x, y) => y.id - x.id).map(r => ({ ...r, content: r.content.slice(0, 200) })) });
+});
+app.post('/api/forum/reports/:id/resolve', requireAuth, (req, res) => {
+  const r = db.prepare('SELECT * FROM forum_reports WHERE id=?').get(Number(req.params.id)); if (!r) return res.status(404).json({ error: 'گزارش پیدا نشد.' });
+  const tid = r.target_type === 'post' ? (db.prepare('SELECT topic_id FROM forum_posts WHERE id=?').get(r.target_id) || {}).topic_id : r.target_id; const a = tid && topicAccess(tid, req.user); if (!a || !a.b.mod) return res.status(403).json({ error: 'فقط ناظر.' });
+  if (req.body.action === 'hide') db.prepare(r.target_type === 'post' ? 'UPDATE forum_posts SET hidden=1 WHERE id=?' : 'UPDATE forum_topics SET hidden=1 WHERE id=?').run(r.target_id);
+  db.prepare('UPDATE forum_reports SET resolved=1 WHERE target_type=? AND target_id=?').run(r.target_type, r.target_id); res.json({ ok: true });
+});
+
+// ───────────── لیگ ادبیار (رقابت هفتگی) ─────────────
+const maskName = (n, scopeIsClass) => { if (scopeIsClass) return n; const p = n.trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[1][0] + '.' : n; };
+function leagueTable(weekStart) {   // Map(userId -> {points, exams, challenges, lessons})
+  const from = dayFromNumber(dayNumber(weekStart) - 1) + ' 00:00:00', to = dayFromNumber(dayNumber(weekStart) + 8) + ' 00:00:00', inWeek = ts => { const d = tehranDay(parseDb(ts)); return d >= weekStart && dayNumber(d) < dayNumber(weekStart) + 7; };
+  const m = new Map(), get = id => { if (!m.has(id)) m.set(id, { points: 0, exams: 0, challenges: 0, lessons: 0 }); return m.get(id); };
+  for (const a of db.prepare(`SELECT a.student_id,a.score,a.max_score,a.status,a.submitted_at,(SELECT COUNT(*) FROM questions q WHERE q.exam_id=a.exam_id AND q.type='short') shorts FROM attempts a WHERE a.status IN ('submitted','graded') AND a.max_score>0 AND a.score IS NOT NULL AND a.submitted_at>=? AND a.submitted_at<?`).all(from, to)) {
+    if (!inWeek(a.submitted_at) || (a.status === 'submitted' && a.shorts > 0)) continue; const g = get(a.student_id); g.points += 5 + Math.round(10 * a.score / a.max_score); g.exams++;
+  }
+  for (const c of db.prepare('SELECT user_id,correct,day FROM challenge_log WHERE day>=? AND day<?').all(weekStart, dayFromNumber(dayNumber(weekStart) + 7))) { const g = get(c.user_id); g.points += c.correct ? 10 : 2; g.challenges++; }
+  const lp = new Map(); for (const l of db.prepare('SELECT user_id,updated_at FROM lesson_progress WHERE completed=1 AND updated_at>=? AND updated_at<?').all(from, to)) if (inWeek(l.updated_at)) lp.set(l.user_id, (lp.get(l.user_id) || 0) + 1);
+  for (const [uid, n] of lp) { const g = get(uid), k = Math.min(n, 10); g.points += 3 * k; g.lessons = k; }
+  return m;
+}
+function finalizeWeeks() {
+  const cur = weekStartOf(tehranDay()), mins = [db.prepare('SELECT MIN(submitted_at) d FROM attempts').get().d, db.prepare('SELECT MIN(day) d FROM challenge_log').get().d, db.prepare('SELECT MIN(updated_at) d FROM lesson_progress WHERE completed=1').get().d].filter(Boolean).map(s => s.slice(0, 10));
+  if (!mins.length) return; let w = weekStartOf(mins.sort()[0]), guard = 0;
+  while (w < cur && guard++ < 80) {
+    if (!db.prepare('SELECT 1 FROM league_weeks WHERE week_start=?').get(w)) {
+      const students = new Set(db.prepare("SELECT id FROM users WHERE role='student'").all().map(r => r.id));
+      const top = [...leagueTable(w)].filter(([id, v]) => students.has(id) && v.points > 0).sort((a, b) => b[1].points - a[1].points).slice(0, 3);
+      db.transaction(() => { top.forEach(([id, v], i) => db.prepare('INSERT OR IGNORE INTO league_awards(week_start,user_id,rank,points) VALUES(?,?,?,?)').run(w, id, i + 1, v.points)); db.prepare('INSERT INTO league_weeks(week_start) VALUES(?)').run(w); })();
+    }
+    w = dayFromNumber(dayNumber(w) + 7);
+  }
+}
+app.get('/api/league', requireAuth, (req, res) => {
+  finalizeWeeks();
+  const scope = String(req.query.scope || 'global'), week = weekStartOf(tehranDay()); let ids = null, isClass = false, label = 'همه‌ی دانش‌آموزان';
+  if (scope.startsWith('class:')) { const b = boardInfo(scope.slice(6), req.user); if (!b || !b.class_id) return res.status(404).json({ error: 'کلاس پیدا نشد.' }); ids = new Set(db.prepare('SELECT student_id FROM class_members WHERE class_id=?').all(b.class_id).map(r => r.student_id)); isClass = true; label = b.name; }
+  const users = new Map(db.prepare("SELECT id,name FROM users WHERE role='student' AND active=1").all().map(u => [u.id, u]));
+  const tbl = leagueTable(week), rows = [...users.values()].filter(u => !ids || ids.has(u.id)).map(u => ({ id: u.id, name: u.name, ...(tbl.get(u.id) || { points: 0, exams: 0, challenges: 0, lessons: 0 }) })).filter(r => r.points > 0 || (ids && ids.has(r.id))).sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'fa'));
+  let rank = 0, prev = null, shown = 0; rows.forEach((r, i) => { if (r.points !== prev) { rank = i + 1; prev = r.points; } r.rank = rank; });
+  const meRow = rows.find(r => r.id === req.user.id), medals = { gold: 0, silver: 0, bronze: 0 };
+  for (const r of db.prepare('SELECT rank,COUNT(*) n FROM league_awards WHERE user_id=? GROUP BY rank').all(req.user.id)) medals[['gold', 'silver', 'bronze'][r.rank - 1]] = r.n;
+  const lastWeek = dayFromNumber(dayNumber(week) - 7), last = db.prepare('SELECT a.rank,a.points,u.name FROM league_awards a JOIN users u ON u.id=a.user_id WHERE a.week_start=? ORDER BY a.rank').all(lastWeek).map(r => ({ ...r, name: maskName(r.name, false) }));
+  const streak = req.user.role === 'student' ? challengeStreak(req.user.id) : 0, firstExam = req.user.role === 'student' && !!db.prepare("SELECT 1 FROM attempts WHERE student_id=? AND status IN ('submitted','graded')").get(req.user.id);
+  res.set('Cache-Control', 'no-store').json({ scope, label, week_start: week, week_end: dayFromNumber(dayNumber(week) + 6), total: rows.length,
+    rows: rows.slice(0, 20).map(r => ({ rank: r.rank, name: maskName(r.name, isClass), points: r.points, exams: r.exams, challenges: r.challenges, lessons: r.lessons, me: r.id === req.user.id })), me: meRow ? { rank: meRow.rank, points: meRow.points } : null,
+    last_week: last, medals, badges: [{ id: 'first', name: 'اولین آزمون', desc: 'یک آزمون را کامل دادی', earned: firstExam }, { id: 'streak3', name: 'پشتکار سه‌روزه', desc: 'سه روز پیاپی چالش روزانه', earned: streak >= 3 }, { id: 'streak7', name: 'ستاره‌ی هفته', desc: 'هفت روز پیاپی چالش روزانه', earned: streak >= 7 }, { id: 'gold', name: 'قهرمان هفته', desc: 'رتبه‌ی اول یک هفته', earned: medals.gold > 0 }, { id: 'medal', name: 'مدال‌دار', desc: 'یکی از سه رتبه‌ی برتر یک هفته', earned: medals.gold + medals.silver + medals.bronze > 0 }], streak });
+});
+// ───────────── تکالیف و تحویل، و تقویم آموزشی ─────────────
+const subDir = path.join(dataDir, 'submissions'); fs.mkdirSync(subDir, { recursive: true });
+const subPath = id => path.join(subDir, String(Number(id)));
+const SUB_TYPES = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'text/plain': 'txt', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx' };
+const isoOrNull = s => { const t = userTime(text(s, 40)); return t === null ? null : new Date(t).toISOString(); };
+const ownAssignment = (id, user) => { const a = db.prepare('SELECT a.*,c.name class_name,c.teacher_id class_teacher FROM assignments a JOIN classes c ON c.id=a.class_id WHERE a.id=?').get(Number(id)); return a && (user.role === 'admin' || a.class_teacher === user.id) ? a : null; };
+const parseAssignment = b => {
+  const title = text(b.title, 150), body = text(b.body, 5000), due = isoOrNull(b.due), max = Number(b.max_score === undefined || b.max_score === '' ? 20 : b.max_score);
+  if (title.length < 2) return { error: 'عنوان تکلیف را بنویسید.' }; if (!due) return { error: 'مهلت تحویل را مشخص کنید.' }; if (!(max > 0 && max <= 1000)) return { error: 'بارم تکلیف نامعتبر است.' };
+  return { v: { title, body, due, max, late: b.allow_late === false || b.allow_late === 0 ? 0 : 1 } };
+};
+const assignmentStatus = (a, s, now = Date.now()) => s ? (s.score !== null && s.score !== undefined ? 'graded' : s.late ? 'late' : 'submitted') : (Date.parse(a.due_at) < now ? 'missed' : 'pending');
+app.post('/api/classes/:id/assignments', requireTeacher, (req, res) => {
+  const c = ownClass(req.params.id, req.user); if (!c) return res.status(404).json({ error: 'کلاس پیدا نشد.' });
+  const p = parseAssignment(req.body); if (p.error) return res.status(400).json({ error: p.error });
+  const i = db.prepare('INSERT INTO assignments(class_id,teacher_id,title,body,due_at,max_score,allow_late) VALUES(?,?,?,?,?,?,?)').run(c.id, req.user.id, p.v.title, p.v.body, p.v.due, p.v.max, p.v.late); res.status(201).json({ id: i.lastInsertRowid });
+});
+app.get('/api/classes/:id/assignments', requireAuth, (req, res) => {
+  if (!classAccess(req.params.id, req.user)) return res.status(404).json({ error: 'کلاس پیدا نشد.' });
+  const rows = db.prepare('SELECT * FROM assignments WHERE class_id=? ORDER BY due_at DESC').all(Number(req.params.id)); res.set('Cache-Control', 'no-store');
+  if (req.user.role === 'student') return res.json({ assignments: rows.map(a => { const s = db.prepare('SELECT body,file_name,submitted_at,late,score,feedback FROM assignment_submissions WHERE assignment_id=? AND student_id=?').get(a.id, req.user.id); return { ...a, status: assignmentStatus(a, s), submission: s || null }; }) });
+  const members = db.prepare('SELECT COUNT(*) n FROM class_members WHERE class_id=?').get(Number(req.params.id)).n;
+  res.json({ assignments: rows.map(a => ({ ...a, members, submitted: db.prepare('SELECT COUNT(*) n FROM assignment_submissions WHERE assignment_id=?').get(a.id).n, graded: db.prepare('SELECT COUNT(*) n FROM assignment_submissions WHERE assignment_id=? AND score IS NOT NULL').get(a.id).n })) });
+});
+app.put('/api/assignments/:id', requireTeacher, (req, res) => {
+  const a = ownAssignment(req.params.id, req.user); if (!a) return res.status(404).json({ error: 'تکلیف پیدا نشد.' }); const p = parseAssignment(req.body); if (p.error) return res.status(400).json({ error: p.error });
+  db.prepare('UPDATE assignments SET title=?,body=?,due_at=?,max_score=?,allow_late=? WHERE id=?').run(p.v.title, p.v.body, p.v.due, p.v.max, p.v.late, a.id); res.json({ ok: true });
+});
+app.delete('/api/assignments/:id', requireTeacher, (req, res) => {
+  const a = ownAssignment(req.params.id, req.user); if (!a) return res.status(404).json({ error: 'تکلیف پیدا نشد.' });
+  for (const s of db.prepare('SELECT id FROM assignment_submissions WHERE assignment_id=?').all(a.id)) { try { fs.unlinkSync(subPath(s.id)); } catch { /* نبود */ } }
+  db.prepare('DELETE FROM assignment_submissions WHERE assignment_id=?').run(a.id); db.prepare('DELETE FROM assignments WHERE id=?').run(a.id); res.json({ ok: true });
+});
+app.get('/api/assignments/mine', requireAuth, requireRole('student'), (req, res) => {
+  const rows = db.prepare('SELECT a.*,c.name class_name FROM assignments a JOIN classes c ON c.id=a.class_id JOIN class_members m ON m.class_id=c.id WHERE m.student_id=? ORDER BY a.due_at').all(req.user.id);
+  res.set('Cache-Control', 'no-store').json({ assignments: rows.map(a => { const s = db.prepare('SELECT id,body,file_name,submitted_at,late,score,feedback FROM assignment_submissions WHERE assignment_id=? AND student_id=?').get(a.id, req.user.id); return { ...a, status: assignmentStatus(a, s), submission: s ? { ...s, has_file: !!s.file_name } : null }; }) });
+});
+const submittable = (req, res) => {
+  const a = db.prepare('SELECT a.* FROM assignments a JOIN class_members m ON m.class_id=a.class_id WHERE a.id=? AND m.student_id=?').get(Number(req.params.id), req.user.id);
+  if (!a) { res.status(404).json({ error: 'تکلیف پیدا نشد.' }); return null; }
+  const late = Date.now() > Date.parse(a.due_at); if (late && !a.allow_late) { res.status(403).json({ error: 'مهلت تحویل این تکلیف تمام شده است.' }); return null; }
+  const prev = db.prepare('SELECT * FROM assignment_submissions WHERE assignment_id=? AND student_id=?').get(a.id, req.user.id);
+  if (prev && prev.score !== null) { res.status(409).json({ error: 'این تکلیف نمره گرفته و دیگر قابل ویرایش نیست.' }); return null; }
+  return { a, late, prev };
+};
+app.post('/api/assignments/:id/submit', requireAuth, requireRole('student'), (req, res) => {
+  const ctx = submittable(req, res); if (!ctx) return; const body = text(req.body.body, 8000);
+  if (body.length < 2 && !(ctx.prev && ctx.prev.file_name)) return res.status(400).json({ error: 'متن پاسخ را بنویسید یا فایل بفرستید.' });
+  if (ctx.prev) db.prepare("UPDATE assignment_submissions SET body=?,submitted_at=CURRENT_TIMESTAMP,late=? WHERE id=?").run(body, ctx.late ? 1 : 0, ctx.prev.id);
+  else db.prepare('INSERT INTO assignment_submissions(assignment_id,student_id,body,late) VALUES(?,?,?,?)').run(ctx.a.id, req.user.id, body, ctx.late ? 1 : 0);
+  res.json({ ok: true, late: ctx.late });
+});
+app.post('/api/assignments/:id/submit-file', requireAuth, requireRole('student'), express.raw({ type: () => true, limit: '10mb' }), (req, res) => {
+  const ctx = submittable(req, res); if (!ctx) return;
+  const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase(); if (!SUB_TYPES[type]) return res.status(400).json({ error: 'فقط PDF، عکس (JPG/PNG/WEBP)، متن ساده یا Word (docx) پذیرفته می‌شود.' });
+  if (!Buffer.isBuffer(req.body) || req.body.length < 20) return res.status(400).json({ error: 'فایل خالی یا خراب است.' });
+  let name = ''; try { name = text(decodeURIComponent(String(req.headers['x-file-name'] || '')), 120).replace(/[\\/:*?"<>|\r\n]/g, '_'); } catch { /* نامعتبر */ } name = name || 'file.' + SUB_TYPES[type];
+  let id; if (ctx.prev) { id = ctx.prev.id; db.prepare('UPDATE assignment_submissions SET file_name=?,file_mime=?,submitted_at=CURRENT_TIMESTAMP,late=? WHERE id=?').run(name, type, ctx.late ? 1 : 0, id); }
+  else id = db.prepare('INSERT INTO assignment_submissions(assignment_id,student_id,file_name,file_mime,late) VALUES(?,?,?,?,?)').run(ctx.a.id, req.user.id, name, type, ctx.late ? 1 : 0).lastInsertRowid;
+  fs.writeFileSync(subPath(id), req.body); res.json({ ok: true, late: ctx.late, file: name });
+});
+app.get('/api/assignments/:id/submissions', requireTeacher, (req, res) => {
+  const a = ownAssignment(req.params.id, req.user); if (!a) return res.status(404).json({ error: 'تکلیف پیدا نشد.' });
+  const rows = db.prepare('SELECT u.id student_id,u.name,s.id sub_id,s.body,s.file_name,s.submitted_at,s.late,s.score,s.feedback FROM class_members m JOIN users u ON u.id=m.student_id LEFT JOIN assignment_submissions s ON s.assignment_id=? AND s.student_id=u.id WHERE m.class_id=? ORDER BY u.name').all(a.id, a.class_id);
+  res.set('Cache-Control', 'no-store').json({ assignment: { id: a.id, title: a.title, due_at: a.due_at, max_score: a.max_score }, rows: rows.map(r => ({ ...r, status: assignmentStatus(a, r.sub_id ? r : null), has_file: !!r.file_name })) });
+});
+app.patch('/api/assignments/:id/submissions/:sid/grade', requireTeacher, (req, res) => {
+  const a = ownAssignment(req.params.id, req.user); if (!a) return res.status(404).json({ error: 'تکلیف پیدا نشد.' });
+  const s = db.prepare('SELECT id FROM assignment_submissions WHERE assignment_id=? AND student_id=?').get(a.id, Number(req.params.sid)); if (!s) return res.status(404).json({ error: 'این دانش‌آموز تکلیف را تحویل نداده است.' });
+  const score = Number(req.body.score); if (!(score >= 0 && score <= a.max_score)) return res.status(400).json({ error: `نمره باید بین ۰ و ${a.max_score} باشد.` });
+  db.prepare('UPDATE assignment_submissions SET score=?,feedback=?,graded_at=CURRENT_TIMESTAMP WHERE id=?').run(score, text(req.body.feedback, 1000), s.id); res.json({ ok: true });
+});
+app.get('/api/submissions/:id/file', requireAuth, (req, res) => {
+  const s = db.prepare('SELECT s.id,s.student_id,s.file_name,s.file_mime,a.class_id FROM assignment_submissions s JOIN assignments a ON a.id=s.assignment_id WHERE s.id=?').get(Number(req.params.id));
+  if (!s || !s.file_name || !fs.existsSync(subPath(s.id))) return res.status(404).end();
+  const ok = req.user.role === 'student' ? s.student_id === req.user.id : !!ownClass(s.class_id, req.user); if (!ok) return res.status(404).end();
+  const inline = s.file_mime === 'application/pdf' || s.file_mime.startsWith('image/');
+  res.sendFile(subPath(s.id), { headers: { 'Content-Type': s.file_mime, 'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(s.file_name)}`, 'Cache-Control': 'private, no-store' } });
+});
+app.post('/api/classes/:id/events', requireTeacher, (req, res) => {
+  const c = ownClass(req.params.id, req.user); if (!c) return res.status(404).json({ error: 'کلاس پیدا نشد.' });
+  const kind = ['class', 'exam', 'reminder'].includes(req.body.kind) ? req.body.kind : 'class', title = text(req.body.title, 150), start = isoOrNull(req.body.start), end = req.body.end ? isoOrNull(req.body.end) : null;
+  if (title.length < 2 || !start) return res.status(400).json({ error: 'عنوان و زمان رویداد لازم است.' });
+  const i = db.prepare('INSERT INTO calendar_events(class_id,teacher_id,kind,title,description,start_at,end_at) VALUES(?,?,?,?,?,?,?)').run(c.id, req.user.id, kind, title, text(req.body.description, 1000), start, end); res.status(201).json({ id: i.lastInsertRowid });
+});
+app.delete('/api/events/:id', requireTeacher, (req, res) => {
+  const e = db.prepare('SELECT id,class_id FROM calendar_events WHERE id=?').get(Number(req.params.id)); if (!e || !ownClass(e.class_id, req.user)) return res.status(404).json({ error: 'رویداد پیدا نشد.' });
+  db.prepare('DELETE FROM calendar_events WHERE id=?').run(e.id); res.json({ ok: true });
+});
+app.get('/api/calendar', requireAuth, (req, res) => {
+  const from = userTime(req.query.from) ?? Date.now() - 31 * 86400000, to = userTime(req.query.to) ?? Date.now() + 62 * 86400000, r = req.user.role;
+  const classes = r === 'student' ? db.prepare('SELECT c.id,c.name FROM classes c JOIN class_members m ON m.class_id=c.id WHERE m.student_id=?').all(req.user.id) : r === 'teacher' ? db.prepare('SELECT id,name FROM classes WHERE teacher_id=?').all(req.user.id) : db.prepare('SELECT id,name FROM classes').all();
+  const ids = classes.map(c => c.id), name = Object.fromEntries(classes.map(c => [c.id, c.name])), inr = t => t !== null && t >= from && t <= to, items = [];
+  if (ids.length) {
+    const q = ids.map(() => '?').join(',');
+    for (const a of db.prepare(`SELECT * FROM assignments WHERE class_id IN (${q})`).all(...ids)) {
+      const t = Date.parse(a.due_at); if (!inr(t)) continue; const s = r === 'student' ? db.prepare('SELECT score,late FROM assignment_submissions WHERE assignment_id=? AND student_id=?').get(a.id, req.user.id) : null;
+      items.push({ type: 'assignment', id: a.id, class_id: a.class_id, class_name: name[a.class_id], title: a.title, detail: 'مهلت تحویل تکلیف', at: new Date(t).toISOString(), status: r === 'student' ? assignmentStatus(a, s) : null });
+    }
+    for (const e of db.prepare(`SELECT id,class_id,title,starts_at,ends_at FROM exams WHERE class_id IN (${q}) AND status='published'`).all(...ids)) {
+      const t = userTime(e.starts_at) ?? userTime(e.ends_at); if (!inr(t)) continue; items.push({ type: 'exam', id: e.id, class_id: e.class_id, class_name: name[e.class_id], title: e.title, detail: e.starts_at ? 'آزمون' : 'پایان مهلت آزمون', at: new Date(t).toISOString(), end: userTime(e.ends_at) ? new Date(userTime(e.ends_at)).toISOString() : null });
+    }
+    for (const e of db.prepare(`SELECT * FROM calendar_events WHERE class_id IN (${q})`).all(...ids)) {
+      const t = Date.parse(e.start_at); if (!inr(t)) continue; items.push({ type: 'event', id: e.id, kind: e.kind, class_id: e.class_id, class_name: name[e.class_id], title: e.title, detail: e.description, at: e.start_at, end: e.end_at, mine: r !== 'student' });
+    }
+  }
+  res.set('Cache-Control', 'no-store').json({ items: items.sort((a, b) => a.at.localeCompare(b.at)), classes });
+});
+// ───────────── دفترچه اشتباهات هوشمند و تحلیل نقاط ضعف ─────────────
+const REASONS = { careless: 'بی‌دقتی', concept: 'مفهوم را نمی‌دانستم', vocab: 'معنی واژه را نمی‌دانستم', time: 'وقت کم آوردم', guess: 'حدس زدم' };
+const REASON_ADVICE = { careless: 'قبل از انتخاب گزینه، صورت سؤال را یک بار دیگر بخوان و به کلمه‌هایی مثل «نادرست»، «همه‌ی موارد» و «به‌جز» دقت کن.', concept: 'درس مربوطه را دوباره مرور کن و بعد همین سؤال‌ها را در بخش تمرین حل کن.', vocab: 'معنی واژگان درس را از بخش «کتاب‌های درسی» بخوان و برای خودت کارت واژه بساز.', time: 'آزمون‌ها را با زمان‌سنج تمرین کن و سؤال‌های سخت را برای آخر بگذار.', guess: 'قبل از حدس زدن، تا جایی که می‌شود گزینه‌های غلط را حذف کن؛ شانس درست‌شدن بالا می‌رود.' };
+const reviewable = e => e.review_answers === 1 && !(userTime(e.ends_at) && Date.now() < userTime(e.ends_at));
+function syncMistakes(uid) {
+  const rows = db.prepare(`SELECT ans.question_id,ans.is_correct,ans.awarded_points,q.type,q.points,a.status FROM answers ans JOIN attempts a ON a.id=ans.attempt_id JOIN questions q ON q.id=ans.question_id WHERE a.student_id=? AND a.status IN ('submitted','graded')`).all(uid);
+  const ins = db.prepare('INSERT OR IGNORE INTO mistake_notes(user_id,question_id) VALUES(?,?)');
+  for (const r of rows) { const wrong = r.type === 'mcq' ? !r.is_correct : (r.status === 'graded' && r.awarded_points !== null && r.points > 0 && r.awarded_points < 0.6 * r.points); if (wrong) ins.run(uid, r.question_id); }
+}
+const MISTAKE_SQL = `SELECT q.id qid,q.type,q.prompt,q.options,q.correct_answer,q.explanation,q.points,q.lesson_id,l.title lesson_title,l.grade lesson_grade,e.id exam_id,e.title exam_title,e.review_answers,e.ends_at,
+  ans.answer_text,ans.awarded_points,ans.teacher_feedback,a.submitted_at,n.status,n.reason,n.explanation ai_explanation,n.streak,n.practiced
+  FROM mistake_notes n JOIN questions q ON q.id=n.question_id JOIN exams e ON e.id=q.exam_id JOIN attempts a ON a.exam_id=e.id AND a.student_id=n.user_id JOIN answers ans ON ans.attempt_id=a.id AND ans.question_id=q.id LEFT JOIN lessons l ON l.id=q.lesson_id WHERE n.user_id=?`;
+const mistakeItem = r => ({ qid: r.qid, type: r.type, prompt: r.prompt, options: parseJSON(r.options), correct_answer: r.correct_answer, explanation: r.explanation, points: r.points, lesson_id: r.lesson_id, lesson_title: r.lesson_title, lesson_grade: r.lesson_grade, exam_title: r.exam_title,
+  student_answer: r.answer_text, awarded_points: r.awarded_points, teacher_feedback: r.teacher_feedback, date: r.submitted_at, status: r.status, reason: r.reason, ai_explanation: r.ai_explanation, streak: r.streak, practiced: r.practiced });
+app.get('/api/me/mistakes', requireAuth, requireRole('student'), (req, res) => {
+  syncMistakes(req.user.id); const all = db.prepare(MISTAKE_SQL).all(req.user.id), vis = all.filter(reviewable), hidden = all.length - vis.length;
+  const st = String(req.query.status || 'open'), lesson = Number(req.query.lesson) || null;
+  const items = vis.filter(r => (st === 'all' || r.status === st) && (!lesson || r.lesson_id === lesson)).sort((a, b) => String(b.submitted_at).localeCompare(String(a.submitted_at))).map(mistakeItem);
+  const open = vis.filter(r => r.status === 'open'), reasons = {}; for (const r of open) if (r.reason) reasons[r.reason] = (reasons[r.reason] || 0) + 1;
+  const topReason = Object.entries(reasons).sort((a, b) => b[1] - a[1])[0]?.[0] || null, byLesson = new Map();
+  for (const r of vis) { const k = r.lesson_id || 0, v = byLesson.get(k) || { lesson_id: r.lesson_id, title: r.lesson_title || 'بدون درس', grade: r.lesson_grade, open: 0, total: 0 }; v.total++; if (r.status === 'open') v.open++; byLesson.set(k, v); }
+  res.set('Cache-Control', 'no-store').json({ items, summary: { open: open.length, mastered: vis.length - open.length, hidden, reasons, reason_labels: REASONS, top_reason: topReason, advice: topReason ? REASON_ADVICE[topReason] : null, by_lesson: [...byLesson.values()].sort((a, b) => b.open - a.open) } });
+});
+const myNote = (req, res) => { const n = db.prepare('SELECT n.*,q.exam_id FROM mistake_notes n JOIN questions q ON q.id=n.question_id WHERE n.user_id=? AND n.question_id=?').get(req.user.id, Number(req.params.qid)); if (!n) { res.status(404).json({ error: 'این مورد در دفترچه‌ی شما نیست.' }); return null; } return n; };
+app.post('/api/me/mistakes/:qid/reason', requireAuth, requireRole('student'), (req, res) => { const n = myNote(req, res); if (!n) return; const r = String(req.body.reason || ''); if (r && !REASONS[r]) return res.status(400).json({ error: 'دلیل نامعتبر است.' }); db.prepare('UPDATE mistake_notes SET reason=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND question_id=?').run(r, req.user.id, n.question_id); res.json({ ok: true }); });
+app.post('/api/me/mistakes/:qid/status', requireAuth, requireRole('student'), (req, res) => { const n = myNote(req, res); if (!n) return; const s = req.body.status === 'mastered' ? 'mastered' : 'open'; db.prepare('UPDATE mistake_notes SET status=?,streak=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND question_id=?').run(s, s === 'mastered' ? 2 : 0, req.user.id, n.question_id); res.json({ ok: true }); });
+const explainCount = new Map();
+app.post('/api/me/mistakes/:qid/explain', requireAuth, requireRole('student'), aiLimiter, async (req, res) => {
+  const n = myNote(req, res); if (!n) return; const row = db.prepare(MISTAKE_SQL + ' AND q.id=?').get(req.user.id, n.question_id);
+  if (!row || !reviewable(row)) return res.status(403).json({ error: 'معلم نمایش پاسخ این آزمون را فعال نکرده است.' });
+  if (n.explanation && !req.body.refresh) return res.json({ explanation: n.explanation, cached: true });
+  const k = req.user.id + ':' + tehranDay(), used = explainCount.get(k) || 0; if (used >= 20) return res.status(429).json({ error: 'سقف توضیح هوشمند امروز (۲۰ مورد) تمام شد؛ فردا ادامه بده.' });
+  const it = mistakeItem(row), isMcq = it.type === 'mcq';
+  const prompt = `درس: ${it.lesson_title || 'نامشخص'}\nسؤال: ${it.prompt}\n${isMcq ? `گزینه‌ها: ${it.options.join(' | ')}\nپاسخ دانش‌آموز: ${it.student_answer || '(بدون پاسخ)'}\nپاسخ درست: ${it.correct_answer}` : `پاسخ دانش‌آموز: ${it.student_answer || '(بدون پاسخ)'}\nپاسخ نمونه: ${it.correct_answer || '(ثبت نشده)'}\nبازخورد معلم: ${it.teacher_feedback || '(ندارد)'}`}\n${it.explanation ? 'توضیح معلم: ' + it.explanation : ''}`;
+  const system = 'تو یک معلم ادبیات فارسی صبور و دقیق برای دانش‌آموزان متوسطه هستی. به فارسی ساده و کوتاه (حداکثر ۸ جمله) توضیح بده: ۱) چرا پاسخ دانش‌آموز نادرست یا ناقص بود، ۲) چرا پاسخ درست، درست است، ۳) یک راه ساده برای یادآوری و پیشگیری از تکرار این اشتباه. فقط بر پایه‌ی اطلاعات همین سؤال حرف بزن؛ اگر درباره‌ی چیزی مطمئن نیستی، بنویس که باید در کتاب درسی بررسی شود و حدس نزن.';
+  try { const out = await askAI(prompt, system); explainCount.set(k, used + 1); db.prepare('UPDATE mistake_notes SET explanation=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND question_id=?').run(String(out).slice(0, 3000), req.user.id, n.question_id); touchActivity(req.user.id); res.json({ explanation: out }); }
+  catch (e) { const [status, error] = aiError(e); res.status(status).json({ error }); }
+});
+app.get('/api/me/mistakes/practice', requireAuth, requireRole('student'), (req, res) => {
+  syncMistakes(req.user.id); const lesson = Number(req.query.lesson) || null;
+  const rows = db.prepare(MISTAKE_SQL).all(req.user.id).filter(r => r.status === 'open' && r.type === 'mcq' && reviewable(r) && (!lesson || r.lesson_id === lesson));
+  const pick = seededShuffle(rows, Date.now() % 100000).slice(0, 10);
+  res.set('Cache-Control', 'no-store').json({ questions: pick.map(r => ({ qid: r.qid, prompt: r.prompt, lesson_title: r.lesson_title, options: seededShuffle(parseJSON(r.options), r.qid * 7 + (Date.now() % 1000)) })), available: rows.length });
+});
+app.post('/api/me/mistakes/practice/answer', requireAuth, requireRole('student'), (req, res) => {
+  const qid = Number(req.body.question_id), row = db.prepare(MISTAKE_SQL + ' AND q.id=?').get(req.user.id, qid);
+  if (!row || row.status !== 'open' || row.type !== 'mcq' || !reviewable(row)) return res.status(404).json({ error: 'این سؤال برای تمرین در دسترس نیست.' });
+  const choice = text(req.body.choice, 500), opts = parseJSON(row.options); if (!opts.includes(choice)) return res.status(400).json({ error: 'گزینه نامعتبر است.' });
+  const ok = choice === row.correct_answer, streak = ok ? row.streak + 1 : 0, mastered = streak >= 2;
+  db.prepare('UPDATE mistake_notes SET practiced=practiced+1,streak=?,status=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND question_id=?').run(streak, mastered ? 'mastered' : 'open', req.user.id, qid);
+  touchActivity(req.user.id); res.json({ correct: ok, answer: row.correct_answer, explanation: row.explanation, streak, mastered });
+});
+app.post('/api/me/weakness/coach', requireAuth, requireRole('student'), aiLimiter, async (req, res) => {
+  const rep = reportFor(req.user.id, null); syncMistakes(req.user.id); const open = db.prepare(MISTAKE_SQL).all(req.user.id).filter(r => r.status === 'open' && reviewable(r));
+  if (!rep.topics.length && !open.length) return res.status(400).json({ error: 'هنوز داده‌ی کافی (آزمون یا اشتباه ثبت‌شده) برای تحلیل نیست.' });
+  const by = {}; open.forEach(r => { by[r.lesson_title || 'بدون درس'] = (by[r.lesson_title || 'بدون درس'] || 0) + 1; }); const reasons = {}; open.forEach(r => { if (r.reason) reasons[REASONS[r.reason]] = (reasons[REASONS[r.reason]] || 0) + 1; });
+  const prompt = `میانگین نمره‌ها: ${rep.summary.avg ?? 'نامشخص'}٪\nتسلط بر مبحث‌ها (درصد): ${rep.topics.map(t => `${t.title}: ${Math.round(t.pct)}٪`).join('؛ ') || 'نامشخص'}\nاشتباهات باز به تفکیک درس: ${Object.entries(by).map(([k, v]) => `${k}: ${v}`).join('؛ ') || 'ندارد'}\nدلیل اشتباهات از نگاه خود دانش‌آموز: ${Object.entries(reasons).map(([k, v]) => `${k}: ${v}`).join('؛ ') || 'ثبت نشده'}`;
+  const system = 'تو مشاور تحصیلی دوستانه و واقع‌بین برای دانش‌آموز متوسطه‌ی درس ادبیات فارسی هستی. بر پایه‌ی داده‌های زیر، به فارسی ساده و محترمانه (حداکثر ۱۴۰ کلمه) بنویس: ۱) نقطه‌ی قوت اصلی، ۲) دو مبحث که اولویت تمرین دارند، ۳) سه کار کوچک و مشخص برای این هفته. عدد یا مبحثی را که در داده‌ها نیست نساز. لحن تشویقی داشته باش و از برچسب‌زدن به دانش‌آموز پرهیز کن.';
+  try { const out = await askAI(prompt, system); touchActivity(req.user.id); res.json({ coach: out }); } catch (e) { const [status, error] = aiError(e); res.status(status).json({ error }); }
+});
+const examClassId = (b, user) => {
+  const raw = b.class_id; if (raw === undefined || raw === null || raw === '') return user.role === 'admin' ? { id: null } : { error: 'برای آزمون یک کلاس انتخاب کنید (اول در تب «کلاس‌ها» کلاس بسازید).' };
+  const c = ownClass(Number(raw), user); return c ? { id: c.id } : { error: 'کلاس انتخاب‌شده معتبر نیست.' };
+};
+const studentInExamClass = (exam, user) => !exam.class_id || !!db.prepare('SELECT 1 FROM class_members WHERE class_id=? AND student_id=?').get(exam.class_id, user.id);
+app.patch('/api/exams/:id/class', requireTeacher, (req, res) => {
+  const exam = ownsExam(Number(req.params.id), req.user); if (!exam) return res.status(404).json({ error: 'آزمون پیدا نشد.' });
+  const ec = examClassId(req.body, req.user); if (ec.error) return res.status(400).json({ error: ec.error });
+  db.prepare('UPDATE exams SET class_id=? WHERE id=?').run(ec.id, exam.id); res.json({ ok: true });
+});
+// ── مطالب اختصاصی کلاس (نکته و ویدیو): فقط معلم همان کلاس و دانش‌آموزان عضو ──
+const matDir = path.join(dataDir, 'class-materials'); fs.mkdirSync(matDir, { recursive: true });
+const matPath = id => path.join(matDir, String(Number(id)));
+const classAccess = (classId, user) => user.role === 'student' ? !!db.prepare('SELECT 1 FROM class_members WHERE class_id=? AND student_id=?').get(Number(classId), user.id) : !!ownClass(classId, user);
+app.get('/api/classes/:id/materials', requireAuth, (req, res) => {
+  if (!classAccess(req.params.id, req.user)) return res.status(404).json({ error: 'کلاس پیدا نشد.' });
+  res.set('Cache-Control', 'no-store').json({ materials: db.prepare('SELECT id,kind,title,body,created_at FROM class_materials WHERE class_id=? ORDER BY id DESC').all(Number(req.params.id)).map(m => ({ ...m, url: m.kind === 'video' ? '/api/class-materials/' + m.id + '/file' : undefined })) });
+});
+app.post('/api/classes/:id/materials', requireTeacher, (req, res) => {
+  const c = ownClass(req.params.id, req.user); if (!c) return res.status(404).json({ error: 'کلاس پیدا نشد.' });
+  const title = text(req.body.title, 150), body = text(req.body.body, 8000); if (title.length < 2 || body.length < 2) return res.status(400).json({ error: 'عنوان و متن نکته لازم است.' });
+  const i = db.prepare("INSERT INTO class_materials(class_id,kind,title,body) VALUES(?,'note',?,?)").run(c.id, title, body); res.status(201).json({ id: i.lastInsertRowid });
+});
+app.post('/api/classes/:id/materials/video', requireTeacher, express.raw({ type: () => true, limit: '150mb' }), (req, res) => {
+  const c = ownClass(req.params.id, req.user); if (!c) return res.status(404).json({ error: 'کلاس پیدا نشد.' });
+  const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+  if (!['video/mp4', 'video/webm'].includes(type)) return res.status(400).json({ error: 'فقط ویدیوی MP4 یا WEBM پذیرفته می‌شود.' });
+  if (!Buffer.isBuffer(req.body) || req.body.length < 100) return res.status(400).json({ error: 'فایل خالی یا خراب است.' });
+  let title = ''; try { title = text(decodeURIComponent(String(req.headers['x-title'] || '')), 150); } catch { /* نامعتبر */ }
+  if (title.length < 2) return res.status(400).json({ error: 'برای ویدیو عنوان بنویسید.' });
+  const i = db.prepare("INSERT INTO class_materials(class_id,kind,title,mime) VALUES(?,'video',?,?)").run(c.id, title, type);
+  fs.writeFileSync(matPath(i.lastInsertRowid), req.body); res.status(201).json({ id: i.lastInsertRowid });
+});
+app.get('/api/class-materials/:id/file', requireAuth, (req, res) => {
+  const m = db.prepare("SELECT class_id,mime FROM class_materials WHERE id=? AND kind='video'").get(Number(req.params.id));
+  if (!m || !classAccess(m.class_id, req.user) || !fs.existsSync(matPath(req.params.id))) return res.status(404).end();
+  res.sendFile(matPath(req.params.id), { headers: { 'Content-Type': m.mime, 'Cache-Control': 'private, max-age=3600' }, acceptRanges: true });
+});
+app.delete('/api/classes/:id/materials/:mid', requireTeacher, (req, res) => {
+  const c = ownClass(req.params.id, req.user); if (!c) return res.status(404).json({ error: 'کلاس پیدا نشد.' });
+  try { fs.unlinkSync(matPath(req.params.mid)); } catch { /* فایلی نبود */ }
+  const r = db.prepare('DELETE FROM class_materials WHERE id=? AND class_id=?').run(Number(req.params.mid), c.id); if (!r.changes) return res.status(404).json({ error: 'مورد پیدا نشد.' }); res.json({ ok: true });
+});
+app.get('/student', (req, res) => res.sendFile(path.join(root, 'public', 'student.html')));
 const parseVerse = b => {
   const t = text(b.text, 600); if (t.length < 2) return { error: 'متن بیت لازم است.' };
   const bg = photoField(b.bg === undefined ? b.photo : b.bg, 450000); if (bg === false) return { error: 'عکس پس‌زمینه نامعتبر است یا بزرگ‌تر از حد مجاز است.' };

@@ -1,7 +1,7 @@
 const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');const root=path.join(__dirname,'..');const pkg=require(path.join(root,'package.json'));const server=fs.readFileSync(path.join(root,'server.js'),'utf8');const panel=fs.readFileSync(path.join(root,'public','panel.js'),'utf8');const index=fs.readFileSync(path.join(root,'public','index.html'),'utf8');
 test('uses sql.js instead of native sqlite dependencies',()=>{assert.ok(pkg.dependencies['sql.js']);assert.ok(!pkg.dependencies['better-sqlite3']);assert.ok(!pkg.dependencies['connect-sqlite3']);});
 test('teacher and admin dashboards are present',()=>{assert.ok(fs.existsSync(path.join(root,'public','panel.html')));assert.match(server,/app\.get\('\/teacher'/);assert.match(server,/app\.get\('\/admin'/);assert.match(panel,/ساخت آزمون/);});
-test('objective exam publish requires at least five questions',()=>{assert.match(server,/n\s*<\s*5/);assert.match(server,/type!='mcq'/);});
+test('objective exam publish requires at least five questions',()=>{assert.match(server,/n\s*<\s*5/);assert.match(server,/type='mcq' AND \(correct_answer IS NULL/);});
 test('lesson and poem admin endpoints exist',()=>{assert.match(server,/api\/admin\/lessons\/:id/);assert.match(server,/api\/admin\/poems/);assert.match(server,/CREATE TABLE IF NOT EXISTS poems/);});
 test('poem library and owner footer are present',()=>{assert.match(index,/id="poems"/);assert.match(index,/امیرحسین احمدی/);assert.match(fs.readFileSync(path.join(root,'public','app.js'),'utf8'),/loadPoems/);});
 

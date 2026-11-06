@@ -52,7 +52,7 @@ function applyTheme(light) { document.body.classList.toggle('light', light); $('
 try { applyTheme(localStorage.getItem('adabiyar-theme') === 'light'); } catch { /* ignore */ }
 $('#themeToggle').addEventListener('click', () => { const light = !document.body.classList.contains('light'); applyTheme(light); try { localStorage.setItem('adabiyar-theme', light ? 'light' : 'dark'); } catch { /* ignore */ } });
 
-const spyMap = { hero: '#top', grades: '#grades', features: '#features', poems: '#poems', exams: '#exams', tutor: '#tutor', about: '#about' };
+const spyMap = { hero: '#top', daily: '#daily', grades: '#grades', features: '#features', poems: '#poems', exams: '#exams', tutor: '#tutor', about: '#about' };
 const spy = new IntersectionObserver(entries => entries.forEach(e => { if (e.isIntersecting) { const href = spyMap[e.target.id]; $$('.nav a').forEach(a => a.classList.toggle('active', a.getAttribute('href') === href)); } }), { rootMargin: '-40% 0px -55% 0px' });
 Object.keys(spyMap).forEach(id => { const el = document.getElementById(id); if (el) spy.observe(el); });
 
@@ -85,15 +85,13 @@ async function loadUserData() {
 }
 async function afterAuth() { updateAuthUI(); await loadUserData(); refreshLists(); }
 function updateAuthUI() {
-  const b = $('#loginBtn'); $('#rolePanel')?.remove(); $('#myBtn')?.remove();
-  if (!state.user) { b.textContent = 'ورود / ثبت‌نام ↗'; b.onclick = () => authDialog(); return; }
-  b.textContent = `${state.user.name} · خروج`;
-  b.onclick = async () => { try { await api('/api/auth/logout', { method: 'POST', body: '{}' }); } catch { /* ignore */ } state.user = null; await afterAuth(); toast('از حساب خارج شدی.'); };
-  const my = document.createElement('button'); my.id = 'myBtn'; my.className = 'login-btn'; my.textContent = 'پیشرفت من'; my.onclick = openDashboard; b.before(my);
-  if (['teacher', 'admin'].includes(state.user.role)) {
-    const p = document.createElement('button'); p.id = 'rolePanel'; p.className = 'login-btn'; p.textContent = state.user.role === 'admin' ? 'پنل مدیر' : 'پنل معلم';
-    p.onclick = () => { location.href = state.user.role === 'admin' ? '/admin' : '/teacher'; }; b.before(p);
-  }
+  const b = $('#loginBtn'); $('#rolePanel')?.remove(); $('#myBtn')?.remove(); $('#userPanel')?.remove();
+  if (!state.user) { b.textContent = 'ورود / ثبت‌نام'; b.onclick = () => authDialog(); return; }
+  const doLogout = async () => { try { await api('/api/auth/logout', { method: 'POST', body: '{}' }); } catch { /* ignore */ } state.user = null; await afterAuth(); toast('از حساب خارج شدی.'); };
+  b.textContent = `${state.user.name} ▾`; b.setAttribute('aria-haspopup', 'true');
+  const panel = document.createElement('div'); panel.id = 'userPanel'; panel.className = 'user-panel';
+  panel.innerHTML = SiteHeader.userItems(state.user.role).map(i => `<a href="${i[0]}">${i[1]}</a>`).join('') + '<button type="button" id="logoutBtn">خروج از حساب</button>';
+  b.after(panel); b.onclick = () => panel.classList.toggle('open'); panel.querySelector('#logoutBtn').onclick = doLogout;
 }
 
 // ───────── درس‌ها ─────────
@@ -144,10 +142,16 @@ async function loadLessons(grade = 'all', q = '') {
 }
 function refreshLists() { if (lastLessons.length) renderLessons(); loadPoems(); }
 
+function bodyHtml(t) {
+  return String(t || '').split(/\n{2,}/).map(x => x.trim()).filter(Boolean).map(x => x.startsWith('## ') ? `<h3>${esc(x.slice(3))}</h3>` : `<p>${esc(x).replace(/\n/g, '<br>')}</p>`).join('');
+}
 function openLesson(l) {
+  fetch('/api/lessons/' + l.id).then(r => r.json()).then(d => openLessonFull(d.lesson || l)).catch(() => openLessonFull(l));
+}
+function openLessonFull(l) {
   const points = Array.isArray(l.important_points) ? l.important_points : [], vocab = Array.isArray(l.vocabulary) ? l.vocabulary : [];
   const done = state.done.has(l.id);
-  customDialog(l.title, `<p>${esc(l.summary || '')}</p><h3>نکات مهم</h3><ul>${points.map(x => `<li>${esc(x)}</li>`).join('') || '<li>—</li>'}</ul><h3>واژگان</h3><p>${vocab.map(esc).join('، ') || '—'}</p><p class="notice">${esc(STATUS_FA[l.content_status] || STATUS_FA.demo)}${l.source_note ? ' · ' + esc(l.source_note) : ''}</p><div class="dialog-actions"><button class="gold-btn" id="markDone">${done ? 'علامت «خوانده‌شده» را بردار' : 'علامت‌گذاری به‌عنوان خوانده‌شده'}</button><button class="outline-btn" id="saveNote">یادداشت من</button><button class="outline-btn" id="askAbout">بپرس از معلم هوشمند</button></div>`);
+  customDialog(l.title, `<p>${esc(l.summary || '')}</p>${bodyHtml(l.body)}<h3>نکات مهم</h3><ul>${points.map(x => `<li>${esc(x)}</li>`).join('') || '<li>—</li>'}</ul><h3>واژگان</h3><p>${vocab.map(esc).join('، ') || '—'}</p><p class="notice">${esc(STATUS_FA[l.content_status] || STATUS_FA.demo)}${l.source_note ? ' · ' + esc(l.source_note) : ''}</p><div class="dialog-actions"><button class="gold-btn" id="markDone">${done ? 'علامت «خوانده‌شده» را بردار' : 'علامت‌گذاری به‌عنوان خوانده‌شده'}</button><button class="outline-btn" id="saveNote">یادداشت من</button><button class="outline-btn" id="askAbout">بپرس از معلم هوشمند</button></div>`);
   $('#markDone').onclick = async () => {
     if (!requireLogin('برای ثبت پیشرفت، ابتدا وارد حساب شو.')) return;
     try { await api(`/api/progress/${l.id}`, { method: 'PUT', body: body({ completed: !done }) }); done ? state.done.delete(l.id) : state.done.add(l.id); renderLessons(); toast(done ? 'علامت برداشته شد.' : 'این درس به‌عنوان مطالعه‌شده ثبت شد.'); openLesson(l); } catch (e) { toast(e.message); }
@@ -310,3 +314,5 @@ function scrollDepth() {
 }
 window.addEventListener('scroll', scrollDepth, { passive: true });
 init();
+
+if (new URLSearchParams(location.search).get('login')) setTimeout(() => { if (!state.user) authDialog(); }, 900);
